@@ -15,13 +15,9 @@ def run_for(motor, power=75, ever=None, seconds=None, degrees=None):
     """
 
     if motor.regulation_mode == ev3dev.motor.mode_on:
-        if motor.type() == 'tacho':
-            motor.pulses_per_second_setpoint = int(power * 9)
-        elif motor.type() == 'minitacho':
-            motor.pulses_per_second_setpoint = int(power * 12)
+        motor.pulses_per_second_setpoint = int(power)
     else:
         motor.duty_cycle_setpoint = int(power)
-
     if ever is not None:
         motor.run_mode = ev3dev.motor.run_mode_forever
     elif seconds is not None:

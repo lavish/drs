@@ -155,11 +155,9 @@ def avoid_collision():
         ir_medians[robot_id][0] = median(ir_buffer[robot_id][0]) 
         ir_medians[robot_id][1] = median(ir_buffer[robot_id][1])
     
-        print(ir_medians[robot_id][1], end = ' ')    
         if ir_medians[robot_id][1] < 20:
             # [TODO] handle collisions
             pass
-    print()
 
 def identify_color(hsv_color):
     """Return the string id of the color closer to the provide HSV triple."""
@@ -256,19 +254,24 @@ def cross_bordered_region():
 
         if local_state == 'border':
             # slightly move forward so that we are exactly over the color
+            stop_motors()
+            sleep(1)
+            start_motors()
             run_for(motor_left, power=low_pulses, degrees=30)
             run_for(motor_right, power=low_pulses, degrees=30)
+            sleep(1)
             local_state = 'inside'
             # start moving again
-            run_for(ever=True, power=low_pulses)
-            run_for(ever=True, power=low_pulses)
+            run_for(motor_left, ever=True, power=low_pulses)
+            run_for(motor_right, ever=True, power=low_pulses)
         elif local_state == 'inside':
             # time to pick up some samples to identify the color
             count += 1
-            if count >= n_col_samples:
+            if count >= conf.n_col_samples:
                 mean_hsv_color = mean(list(last_hsvs))
                 color = conf.Color[identify_color(hsv_color)]
                 local_state = 'sampled'
+                logging.info(color)
         elif local_state == 'sampled':
             # determine the end of the bordered area using the saturation
             if not in_border():
@@ -321,7 +324,6 @@ def median(data):
     else:
         i = n//2
         return (data[i-1] + data[i])/2
-
 
 def color_distance(a, b):
     """Compute the euclidean distance of 2 values.
@@ -378,7 +380,7 @@ def main():
         # protocol
         hue, saturation, value = get_hsv_colors()
         if state == State.moving:
-            if in_border():    
+            if in_border():
                 if not marker_crossed:
                     # found a marker, we need to stop as soon as we find a
                     # matching color

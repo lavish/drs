@@ -138,8 +138,7 @@ def main():
 
         print("The color recognized is '" + data[mostLikelyColor]["label"] +
                                             "' (Index: " + str(mostLikelyColor) +
-                                            ", Palette Id: " +str(data[mostLikelyColor]["paletteId"])+
-                                            ", HTML Color: " + data[mostLikelyColor]["color"]+")\n")
+                                            ", Palette Id: " +str(data[mostLikelyColor]["paletteId"]))
         b = getch.__call__()
 
 if __name__ == '__main__':
