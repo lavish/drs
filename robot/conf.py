@@ -22,6 +22,8 @@ n_col_samples = 5
 
 # power of both motors when running straight
 base_pulses = 200
+# number of cicles needed to complete a full 360 rotation
+full_rotation_degrees = 905
 
 # web server ip/port
 web_server_ip = '10.42.0.1'

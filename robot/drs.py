@@ -9,6 +9,7 @@ import zmq
 import conf
 import logging
 import atexit
+import random
 import ev3dev_utils
 from time import sleep, time
 from math import sqrt
@@ -19,6 +20,7 @@ from threading import Thread
 from enum import Enum
 from ev3dev import *
 
+# [TODO] add all the other authors
 __authors__ = ["Marco Squarcina <squarcina at dais.unive.it>"]
 __status__  =  "Development"
 
@@ -168,10 +170,12 @@ def avoid_collision():
         # recompute the median
         ir_medians[robot_id][0] = median(ir_buffer[robot_id][0]) 
         ir_medians[robot_id][1] = median(ir_buffer[robot_id][1])
-        
+    
+        print(ir_medians[robot_id][1], end = ' ')    
         if ir_medians[robot_id][1] < 20:
             # [TODO] handle collisions
             pass
+    print()
 
 def is_in_border(saturation):
     return saturation > conf.border_saturation_thr
@@ -195,6 +199,72 @@ def flip():
             motor_right.pulses_per_second_setpoint = -conf.base_pulses
         else:
             raise Exception("Lost the track")
+
+def choose_random_direction(edges):
+    direction = random.choice([i for i in range(4) if edges[i]])
+    return direction
+
+def rotate(direction = -1):
+    """Rotate within a node.
+
+    This function can be used to identify all the out edges starting from the
+    current node or, when a direction is provided, to perform a rotation until
+    the given direction is reached. Return the list of discovered edges in the
+    first case, else nothing."""
+
+    # if the direction is 0 we are already in the right place, there's nothing
+    # to do
+    if direction == 0:
+        return
+
+    # reset position
+    motor_left.position = 0
+    motor_right.position = 0
+
+    # start with a queue made only of white values
+    last_values = deque(conf.plane_value for _ in range(conf.n_col_samples))
+    # ... and obviously assume that the previous color is white
+    prev_color = color = 'white'
+
+    # list of edges to be returned in case we are in discovery mode
+    edges = [False for _ in range(4)]
+
+    # start rotating at half of the maximum allowed speed
+    motor_left.pulses_per_second_setpoint = conf.base_pulses//2
+    motor_right.pulses_per_second_setpoint = -conf.base_pulses//2
+
+    while True:
+        # leave if a 360 degrees rotation has been done
+        if motor_left.position > conf.full_rotation_degrees:
+            break
+
+        # update the queue of sampled color values
+        last_values.popleft()
+        last_values.append(get_hsv_colors()[2])
+
+        # update the current color according to the sampled value
+        mean = sum(last_values)/conf.n_col_samples
+        if mean < conf.line_value + 0.1:
+            color = 'black'
+        if mean > conf.plane_value - 0.1:
+            color = 'white'
+
+        # from white we just fallen on a black line
+        if prev_color != color and color == 'black':
+            cur_direction = int(round(motor_left.position / (conf.full_rotation_degrees//4)))
+            if cur_direction == direction:
+                # arrived at destination, it's time to leave ;)
+                break
+            elif cur_direction <= 3:
+                # keep trace of the new edge just found 
+                edges[cur_direction] = True
+            else:
+                # this is the 5th edge, we are back in the starting position on
+                # a node with 4 edges, we should stop here
+                break
+        prev_color = color
+
+    return edges if direction == -1 else None
 
 def cross_bordered_region():
     """Cross a bordered colored region like a marker or a node and return the
@@ -305,12 +375,19 @@ def main():
                     stop_motors()
                 else:
                     color = cross_bordered_region()
+                    available_edges = rotate()
+                    stop_motors()
+                    sound.speak("Found edges on positions {}".format(', '.join(str(i) for i in range(4) if available_edges[i])), True)
+                    direction = choose_random_direction(available_edges)
+                    sound.speak("Moving to direction {}".format(direction), True)
+                    start_motors()
+                    rotate(direction)
                     stop_motors()
                     break
             else:
                 follow_line(value)
         elif state == State.in_marker:
-            sound.speak("I found a marker!", True)
+            #sound.speak("I found a marker!", True)
             start_motors()
             # go straight until the border is found (end of the marker reached)
             color = cross_bordered_region()
