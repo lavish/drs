@@ -9,6 +9,7 @@ import zmq
 import conf
 import logging
 import atexit
+import ev3dev_utils
 from time import sleep, time
 from colorsys import rgb_to_hsv
 from urllib2 import urlopen, URLError
@@ -32,6 +33,9 @@ ir_sensor  = infrared_sensor()
 # other variables
 ir_buffer = [[deque(), deque()] for _ in range(4)]
 ir_medians = [[None, None] for _ in range(4)]
+# mean between the value of the line and the plane
+mid_value = (conf.line_value + conf.plane_value)/2
+
 # zmq context definitions
 context = zmq.Context()
 # possible states
@@ -46,7 +50,7 @@ State = Enum('State', ('explore_node_init explore_node explore_edge_init '
 
 def message_server():
     sock = context.socket(zmq.REP)
-    sock.bind("tcp://0.0.0.0:{}".format(conf.message_port))
+    sock.bind("tcp://0.0.0.0:{}".format(conf.robot_port))
     
     # log incoming messages and reply back
     # [TODO] define a poison pill to kill this thread
@@ -106,10 +110,10 @@ def greet():
     # set the second parameter to False for non-blocking call
     sound.speak("Hello, I am the robot number {}".format(conf.my_robot_id), True)
 
-def follow_line(value, offset, pulses = conf.base_pulses):
+def follow_line(value, pulses = conf.base_pulses):
     """Adjust the speed of the two motors to keep up with the line tracking."""
 
-    error = value * 1000 - offset
+    error = value - mid_value
     correction = int(conf.proportional_const * error)
     motor_left.pulses_per_second_setpoint = pulses + correction
     motor_right.pulses_per_second_setpoint = pulses - correction
@@ -153,8 +157,28 @@ def avoid_collision():
             # [TODO] handle collisions
             pass
 
-def in_border(saturation):
-    return saturation > conf.saturation_thr
+def is_in_border(saturation):
+    return saturation > conf.border_saturation_thr
+
+def flip():
+    # reset position
+    motor_left.position = 0
+    motor_right.position = 0
+    # start with a queue made only of white values
+    last_values = deque(conf.plane_value for _ in range(conf.n_col_samples))
+
+    while True:
+        last_values.popleft()
+        last_values.append(get_hsv_colors()[2])
+        mean = (sum(last_values)/conf.n_col_samples)
+        if motor_left.position > 200 and mean < mid_value:
+            break
+        elif motor_left.position < 600:
+            # clockwise rotation
+            motor_left.pulses_per_second_setpoint = conf.base_pulses
+            motor_right.pulses_per_second_setpoint = -conf.base_pulses
+        else:
+            raise Exception("Lost the track")
 
 def main():
     # register anti-panic handlers
@@ -178,16 +202,12 @@ def main():
     # instance of the socket used for sending messages
     sock = context.socket(zmq.REQ)
     logging.info("connecting")
-    sock.connect("tcp://192.168.10.101:{}".format(conf.message_port))
+    sock.connect("tcp://192.168.10.101:{}".format(conf.robot_port))
     logging.info("sending message")
     sock.send("HALT")
     logging.info("receiving message")
     print(sock.recv())
     '''
-
-    # offset repesents the color on the line border. It is simply computed as
-    # the average of the value (as in HSV) between the line and the border
-    offset = (conf.line_value + conf.plane_value)/2
 
     greet()
     initialize()
@@ -200,17 +220,18 @@ def main():
         # protocol
         hue, saturation, value = get_hsv_colors()
         if state == State.moving:
-            if in_border(saturation):
+            if is_in_border(saturation):
                 # found a marker, we need to stop as soon as we find a matching
                 # color
                 state = State.in_marker
                 stop_motors()
-                sound.speak("Oh geez, I found a marker. Now I will go on slowly because it is boring to stay here!", True)
+                sound.speak("I found a marker!", True)
                 start_motors()
+                flip()
             else:
-                follow_line(value, offset)
+                follow_line(value)
         elif state == State.in_marker:
-            follow_line(value, offset, 80)
+            follow_line(value, 80)
         else:
             logging.critical("WTF?")
             break

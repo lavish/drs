@@ -11,11 +11,14 @@ my_robot_id = 0
 n_ir_samples = 15
 
 # constant for the line following task: the lower the smoother
-proportional_const = 0.5
+proportional_const = 500
 
-# we assume line_color to be darker than plane_color
-line_value = 42
-plane_value = 390
+# we assume line_color to be darker than plane_color (actually line_value and
+# plane_value have been multiplied by a factor of 1000)
+line_value = 0.042
+plane_value = 0.390
+border_saturation_thr = 0.6
+n_col_samples = 5
 
 # power of both motors when running straight
 base_pulses = 200
@@ -28,9 +31,8 @@ web_server_port = 5000
 #robot_ips = ['192.168.1.10{}'.format(i) for i in range(1, 5)]
 robot_ips = ['10.42.0.{}'.format(3+i) for i in range(1, 5)]
 # tcp port used for the messaging protocol
-message_port = 31337
+robot_port = 31337
 
 # all the possible colors assumed by the nodes in the graph
 Color = Enum('Color', 'red green cyan violet unknown')
 
-saturation_thr = 0.6
