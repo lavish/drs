@@ -22,6 +22,7 @@ n_col_samples = 5
 
 # power of both motors when running straight
 base_pulses = 200
+slow_pulses = 100
 # number of cicles needed to complete a full 360 rotation
 full_rotation_degrees = 905
 
@@ -36,7 +37,7 @@ robot_ips = ['10.42.0.{}'.format(3+i) for i in range(1, 5)]
 robot_port = 31337
 
 # all the possible colors assumed by the nodes in the graph, plus unknown
-Color = Enum('Color', 'darkgreen sadyellow sadbrown sadgreen yellow green darkred orange cyan magenta red unknown')
+Color = Enum('Color', 'red yellow green magenta sadyellow darkgreen orange sadbrown darkred sadgreen cyan')
 hsv_colors = {
     'darkgreen': (0.28, 0.62, 0.04),
     'sadyellow': (0.18, 0.74, 0.24),
@@ -47,5 +48,5 @@ hsv_colors = {
     'darkred': (0.06, 0.75, 0.07),
     'orange': (0.09, 0.9, 0.25),
     'cyan': (0.34, 0.62, 0.16),
-    'magenta': (0.15, 0.67, 0.13),
+    'magenta': (0.0, 0.68, 0.17),
     'red': (0.03, 0.89, 0.21)}

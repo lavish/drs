@@ -195,6 +195,7 @@ def rotate(direction = -1):
     motor_right.position = 0
 
     # start with a queue made only of white values
+    # [TODO] there's a global queue for handling this, we should use it
     last_values = deque(conf.plane_value for _ in range(conf.n_col_samples))
     # ... and obviously assume that the previous color is white
     prev_color = color = 'white'
@@ -216,10 +217,10 @@ def rotate(direction = -1):
         last_values.append(get_hsv_colors()[2])
 
         # update the current color according to the sampled value
-        mean = sum(last_values)/conf.n_col_samples
-        if mean < conf.line_value + 0.1:
+        mean_value = mean(last_values)
+        if mean_value < conf.line_value + 0.1:
             color = 'black'
-        if mean > conf.plane_value - 0.1:
+        if mean_value > conf.plane_value - 0.1:
             color = 'white'
 
         # from white we just fallen on a black line
@@ -239,13 +240,19 @@ def rotate(direction = -1):
 
     return edges if direction == -1 else None
 
-def cross_bordered_region():
+def cross_bordered_region(marker=True):
     """Cross a bordered colored region and return the color."""
     
     color = conf.Color.unknown
     low_pulses = conf.base_pulses//3
     # assume that we are on a border
     local_state = 'border'
+    if not marker:
+        # if we are on a node just go straight until the end is reached because
+        # we have already sampled the color in the previous marker
+        local_state = 'sampled'
+        run_for(motor_left, ever=True, power=low_pulses)
+        run_for(motor_right, ever=True, power=low_pulses)
     count = 0
 
     while True:
@@ -257,9 +264,9 @@ def cross_bordered_region():
             stop_motors()
             sleep(1)
             start_motors()
-            run_for(motor_left, power=low_pulses, degrees=30)
-            run_for(motor_right, power=low_pulses, degrees=30)
-            sleep(1)
+            run_for(motor_left, power=low_pulses, degrees=10)
+            run_for(motor_right, power=low_pulses, degrees=10)
+            sleep(0.5)
             local_state = 'inside'
             # start moving again
             run_for(motor_left, ever=True, power=low_pulses)
@@ -280,28 +287,39 @@ def cross_bordered_region():
             raise Exception("Uh?")
 
 def flip():
-    # [TODO] refactor this function using full_rotation_degrees and pay
-    # attention to the usage of last_values, we already have a shared queue for
-    # colors. Moreover we should take into account the marker detection
+    """Change direction to avoid collisions and tell if a marker is found."""
 
+    marker_found = False
     # reset position
     motor_left.position = 0
     motor_right.position = 0
     # start with a queue made only of white values
-    last_values = deque(conf.plane_value for _ in range(conf.n_col_samples))
+    for _ in range(conf.n_col_samples):
+        last_hsvs.append((0, 0, conf.plane_value))
 
     while True:
-        last_values.popleft()
-        last_values.append(get_hsv_colors()[2])
-        mean = (sum(last_values)/conf.n_col_samples)
-        if motor_left.position > 200 and mean < mid_value:
+        get_hsv_colors()
+        # check if we are on a marker, this is kind of a code duplication, but
+        # it's much faster than computing the mean of the same list two times
+        # in a row
+        _, saturation, value = mean(last_hsvs)
+
+        if saturation > conf.border_saturation_thr:
+            marker_found = True
+            if motor_left.position > conf.full_rotation_degrees//2:
+                # we are performing the rotation ovr the marker
+                break
+        elif motor_left.position > conf.full_rotation_degrees//3 and value < mid_value:
+            # we performed the flip and we are back on track
             break
-        elif motor_left.position < 600:
+        elif motor_left.position < conf.full_rotation_degrees*0.75:
             # clockwise rotation
-            motor_left.pulses_per_second_setpoint = conf.base_pulses
-            motor_right.pulses_per_second_setpoint = -conf.base_pulses
+            motor_left.pulses_per_second_setpoint = conf.slow_pulses
+            motor_right.pulses_per_second_setpoint = -conf.slow_pulses
         else:
             raise Exception("Lost the track")
+
+    return marker_found
 
 def mean(data):
     """Compute the mean of the provided data."""
@@ -372,6 +390,7 @@ def main():
     initialize()
     marker_crossed = False
     state = State.moving
+
     while True:
         # query the ir sensor in SEEK mode to avoid collisions
         avoid_collision()
@@ -387,7 +406,7 @@ def main():
                     state = State.in_marker
                     stop_motors()
                 else:
-                    color = cross_bordered_region()
+                    color = cross_bordered_region(marker=False)
                     available_edges = rotate()
                     stop_motors()
                     sound.speak("Found edges on positions {}".format(', '.join(str(i) for i in range(4) if available_edges[i])), True)
