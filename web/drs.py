@@ -127,7 +127,7 @@ def start():
 
 @app.route('/', methods = ['GET', 'POST'])
 def index():
-    return render_template('index.html', started=app.started)
+    return render_template('base.html', started=app.started)
 
 if __name__ == '__main__':
     n_robots = 4

@@ -25,10 +25,11 @@
             {% endif %}
           </ul>
         </nav>
-        <h3 class="text-muted"><span class="glyphicon glyphicon-cog" aria-hidden="true"></span> <strong>DRS</strong></h3>
+        <h3 class="text-muted"><span class="glyphicon glyphicon-cog" aria-hidden="true"></span> <strong>DRS</strong> Distributed Robotic System</h3>
+        {% if started %}
+        Graph
+        {% endif %}
       </div>
-      {% block content %}
-      {% endblock content %}
     </div>
   </body>
 </html>
