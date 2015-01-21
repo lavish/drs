@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>DRS</title>
+
+    <!-- Bootstrap -->
+    <link href="{{ url_for('static', filename='bootstrap-3.3.2-dist/css/bootstrap.min.css') }}" rel="stylesheet">
+    <!-- Custom CSS -->
+    <link href="{{ url_for('static', filename='custom/css/drs.css') }}" rel="stylesheet">
+    <!-- jQuery (necessary for Bootstrap's JavaScript plugins) -->
+    <script src="{{ url_for('static', filename='bootstrap-3.3.2-dist/js/jquery.min.js') }}"></script>
+    <!-- Include all compiled plugins (below), or include individual files as needed -->
+    <script src="{{ url_for('static', filename='bootstrap-3.3.2-dist/js/bootstrap.min.js') }}"></script>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <nav>
+          <ul class="nav nav-pills pull-right">
+            {% if not started %}
+            <li role="presentation" class="active"><a href="/start"><span class="glyphicon glyphicon-play" aria-hidden="true"></span></a></li>
+            {% endif %}
+          </ul>
+        </nav>
+        <h3 class="text-muted"><span class="glyphicon glyphicon-cog" aria-hidden="true"></span> <strong>DRS</strong></h3>
+      </div>
+      {% block content %}
+      {% endblock content %}
+    </div>
+  </body>
+</html>
