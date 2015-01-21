@@ -58,9 +58,9 @@ var updateDelay = 1000;
 
 // Draws the graph according the current adjacency matrix applying styles of undiscovered/discovered nodes, edges and weights.
 function drawGraph() {
-	// Rendering of the graph
-	var width = $("#"+graphWindow).width();
-    var height = $("#"+graphWindow).height();
+    // Rendering of the graph
+    // var width = $("#"+graphWindow).width();
+    // var height = $("#"+graphWindow).height();
     var g = new Graph();
 	
     g.edgeFactory.template.style.directed = false;
@@ -137,5 +137,8 @@ function startViewer() {
 
 // Starts the viewer script
 $(document).ready(function() {
+	width = $("#"+graphWindow).width();
+	height = $("#"+graphWindow).height();
+
 	startViewer();
 });

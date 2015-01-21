@@ -1,2 +1,0 @@
-.content { margin-right: -1px; } /* Questo margine negativo da 1 px può essere posizionato in qualsiasi colonna di questo layout ottenendo lo stesso effetto correttivo. */
-ul.nav a { zoom: 1; }  /* La proprietà zoom fornisce il trigger hasLayout a IE per correggere lo spazio vuoto supplementare tra i collegamenti. */

@@ -90,7 +90,6 @@ def inupdate():
                 # update the list with information about the edge we used to
                 # enter the current node
                 app.graph[node][direction_in] = [old_node, weight]
-    print(app.graph)
     return json.dumps([app.graph, app.positions])
 
 @app.route('/outupdate', methods = ['POST'])
@@ -117,8 +116,8 @@ def outupdate():
     except KeyError:
         pass
 
-    # return an empty response
-    return ('', 204)
+    # return 1 just to confirm that the operation succeeded
+    return '1'
 
 @app.route('/start')
 def start():
@@ -137,4 +136,3 @@ if __name__ == '__main__':
     app.directions = [None] * n_robots
     # start listening
     app.run(host='0.0.0.0', debug=True)
-
