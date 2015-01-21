@@ -76,9 +76,9 @@ def inupdate():
         # create it from scratch
         if node not in app.graph:
             # create a list with four elements representing the 4 possible
-            # directions, all set to [None, -1], where None is an eventual node
-            # and -1 the eventual weight
-            app.graph[node] = [[None, -1]] * 4
+            # directions, all set to None at the beginning
+            app.graph[node] = [None] * 4
+            app.graph[node][direction_in] = [old_node, weight]
         if old_node != Color.unknown.value:
             # add the edge from old_node to the current node, in case it's
             # missing. We assume old_node to be already visited (excluding the
@@ -90,7 +90,7 @@ def inupdate():
                 # update the list with information about the edge we used to
                 # enter the current node
                 app.graph[node][direction_in] = [old_node, weight]
-
+    print(app.graph)
     return json.dumps([app.graph, app.positions])
 
 @app.route('/outupdate', methods = ['POST'])
