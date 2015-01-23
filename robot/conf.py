@@ -14,3 +14,6 @@ plane_value = 266
 # power of both motors when running straight
 target_power = 25
 
+# web server ip/port
+web_server_ip = '10.42.0.1'
+web_server_port = 5000

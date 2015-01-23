@@ -7,7 +7,9 @@ import sys
 import signal
 import zmq
 import conf
+from time import sleep
 from colorsys import rgb_to_hsv
+from urllib2 import urlopen
 from collections import deque
 from ev3.ev3dev import Motor
 from ev3.lego import ColorSensor
@@ -52,6 +54,15 @@ def median(data):
         i = n//2
         return (data[i-1] + data[i])/2
 
+def wait_launch():
+    url_to_check = "http://{}:{}/started".format(
+        conf.web_server_ip, conf.web_server_port)
+    started = False
+    while not started:
+        f = urlopen(url_to_check)
+        started = True if f.read() == '1' else False
+        sleep(0.5)
+
 def main():
     signal.signal(signal.SIGINT, stop)
    
@@ -61,7 +72,10 @@ def main():
     # offset repesents the color on the line border. It is simply computed as
     # the average of the value (as in HSV) between the line and the border
     offset = (conf.line_value + conf.plane_value)/2
- 
+
+    # wait the protocol to be started
+    wait_launch()
+
     while True:
         # query the ir sensor in SEEK mode to avoid collisions
         seek = ir_sensor.seek
