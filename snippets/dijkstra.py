@@ -42,6 +42,9 @@ def shortest_path(graph, source_node, destination_node):
 
     @type  source_node: node
     @param source_node: Node from which to start the search.
+    
+    @type  destination_node: node or null
+    @param destination_node: Destination node of the search. If None all paths are computed.
 
     @rtype  tuple
     @return A tuple containing two dictionaries, each keyed by
@@ -87,6 +90,10 @@ def get_next_direction(graph, source, destination):
         tmp_dist = previous[tmp_dist]
     idx = indexof(lambda edge: edge != None and edge[0] == tmp_dist, graph[source])
     return (tmp_dist, idx)
+
+def get_unexplored_edges(graph, node):
+    edge = [(node, e, indexof(lambda edge: edge == e, graph[node])) for e in graph[node] if e != None and e[0] == Color.unknown.value]
+    return edge
 
 def main():
     print(get_next_direction(graph, Color.red.value, Color.green.value))
