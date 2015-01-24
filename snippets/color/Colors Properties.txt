@@ -1,0 +1,22 @@
+Conditions:
+
+  'border'.v == ('white'.v + 'black'.v)/2   # with HSV Color scheme
+  'border'.l == ('white'.l + 'black'.l)/2   # with HSL Color scheme
+
+  'white'.s < s1
+  'black'.s < s1
+  'greys while following the line edge'.s < s1
+
+  'any node color and border'.s > s1
+
+--------------------------------------------
+
+Measurements with HSV Color scheme
+
+white: (0.22,0.42,0.3) 
+black: (0.29,0.55,0.03)
+'greys while following the line edge'.s = 0.49
+
+'border'.v = ('white'.v + 'black'.v)/2 = (0.3+0.03)/2 = 0.17
+
+s1 = 0.6
