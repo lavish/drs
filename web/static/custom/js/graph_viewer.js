@@ -5,36 +5,41 @@
  *               -1    -> undiscovered edge
  				 >0    -> weight of a discovered edge
  */									 
-var adjMtx = [[00, -1, 00, -1, 00, 00, 00, 00, 00, 00],
-			  [-1, 00, 00, -1, 00, 00, 00, 00, 00, 00], 
-			  [00, 00, 00, 00, -1, 00, -1, -1, 00, 00],
-			  [-1, -1, 00, 00, -1, 00, 00, -1, 00, 00], 
-			  [00, 00, -1, -1, 00, 00, -1, 00, 00, 00],
-			  [00, 00, 00, 00, 00, -1, 00, -1, -1, 00], 
-			  [00, 00, -1, 00, -1, 00, 00, 00, -1, 00],
-			  [00, 00, -1, -1, 00, -1, 00, 00, 00, 00], 
-			  [00, 00, 00, 00, 00, -1, -1, 00, 00, 00],
-			  [00, 00, 00, 00, 00, 00, 00, 00, 00, 00]];
-
+var adjMtx = [[00, -1, 00, -1, 00, 00, 00, 00, 00, 00, 00],
+			  [-1, 00, 00, -1, 00, 00, 00, 00, 00, 00, 00], 
+			  [00, 00, 00, 00, -1, 00, -1, -1, 00, 00, 00],
+			  [-1, -1, 00, 00, -1, 00, 00, -1, 00, 00, 00], 
+			  [00, 00, -1, -1, 00, 00, -1, 00, -1, 00, 00],
+			  [00, 00, 00, 00, 00, -1, 00, -1, -1, 00, 00], 
+			  [00, 00, -1, 00, -1, 00, 00, 00, -1, 00, 00],
+			  [00, 00, -1, -1, 00, -1, 00, 00, 00, -1, -1], 
+			  [00, 00, 00, 00, 00, -1, -1, 00, 00, 00, 00],
+			  [00, 00, 00, 00, 00, -1, 00, 00, -1, 00, -1],
+			  [00, 00, 00, 00, 00, 00, 00, -1, 00, -1, 00]];
+				
 // Node Attributes: 2D position, color and label
-var nodeAttrs = {0: {x:5, y:50, color:"#296c99", label:"Node 1"},
-				 1: {x:8, y:9, color:"#a70511", label:"Node 2"},
-				 2: {x:60, y:60, color:"#2d6511", label:"Node 3"},
-				 3: {x:44, y:12, color:"#fa8e2a", label:"Node 4"},
-				 4: {x:32, y:50, color:"#610d91", label:"Node 5"},
-				 5: {x:70, y:80, color:"#70543a", label:"Node 6"},
-				 6: {x:22, y:80, color:"#22203d", label:"Node 7"},
-				 7: {x:90, y:52, color:"#af3601", label:"Node 8"},
-				 8: {x:10, y:100, color:"#3fe811", label:"Node 9"},
-				 9: {x:80, y:68, color:"#b3f45b"}, label:"Node 10"};
+var nodeAttrs = [{x:5, y:50, color:"#FF0000", label:"Red"},
+				 {x:8, y:9, color:"#FFFF00", label:"Yellow"},
+				 {x:60, y:60, color:"#00FF12", label:"Green"},
+				 {x:44, y:12, color:"#FF00BA", label:"Magenta"},
+				 {x:32, y:50, color:"#FDFF66", label:"Sad Yellow"},
+				 {x:70, y:80, color:"#1E420D", label:"Dark Green"},
+				 {x:22, y:80, color:"#FF9000", label:"Orange"},
+				 {x:100, y:60, color:"#51510B", label:"Sad Brown"},
+				 {x:10, y:100, color:"#A20000", label:"Dark Red"},
+				 {x:50, y:110, color:"#6EB75F", label:"Sad Green"},
+				 {x:75, y:100, color:"#46C993", label:"Cyan"}];
 // Discovered Node Colors
-var nodeColors = ["#ccc","#ccc","#ccc","#ccc","#ccc","#ccc","#ccc","#ccc","#ccc","#ccc"];
+var nodeColors = ["#ccc","#ccc","#ccc","#ccc","#ccc","#ccc","#ccc","#ccc","#ccc","#ccc","#ccc"];
 // Undiscovered and Discovered Edge Colors
 var edgeColors = [["#ccc", "#888"], ["#bfa", "#56f"]];
 // Unweighted Edge Label
 var noDistanceLabel = '?';
 // DOM Div ID wherein rendering the graph
 var graphWindow = 'graph_window';
+// Default width and height of the graph window
+var width = 800;
+var height = 600;
 // Render function for the nodes
 var render = function (r, n) {
 	/* the Raphael set is obligatory, containing all you want to display */
@@ -49,18 +54,17 @@ var render = function (r, n) {
 	return shape;
 };
 // URL of the current discovered graph coded as JSON Object
-var discoverJSONGraphURL = 'graph';
+var discoverJSONGraphURL = '/graph';
 // Delay of the request to check updates on the current graph in milliseconds
 var updateDelay = 1000;
-
 
 // Routines of the script
 
 // Draws the graph according the current adjacency matrix applying styles of undiscovered/discovered nodes, edges and weights.
 function drawGraph() {
-    // Rendering of the graph
-    // var width = $("#"+graphWindow).width();
-    // var height = $("#"+graphWindow).height();
+	// Rendering of the graph
+	//var width = $("#"+graphWindow).width();
+    //var height = $("#"+graphWindow).height();
     var g = new Graph();
 	
     g.edgeFactory.template.style.directed = false;
@@ -139,6 +143,5 @@ function startViewer() {
 $(document).ready(function() {
 	width = $("#"+graphWindow).width();
 	height = $("#"+graphWindow).height();
-
 	startViewer();
 });
