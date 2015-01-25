@@ -1,4 +1,9 @@
 #more shortage close ordering
+#Erase
+#Yellow
+#Apples
+#Safely
+#Undefined
 
 from __future__ import division
 
@@ -98,6 +103,9 @@ def seventeen():
 
 def update():
     while True:
+        # Receive the updated graph, identify the node, explore the node if it is unexplored
+        # by rotating around and counting the edges under the color sensor.
+        # NEXT STATE: EXPLORE_NODE
 
         if state == States.explore_node_init:
             stop()
@@ -110,6 +118,12 @@ def update():
                 #    unexplored_edges.append(edge)
             state = States.explore_node
 
+        # Find the direction to reach the closes unexplored edge. If the edge is adjacent to
+        # the current node then start exploring it, otherwise move to the node in the minimum path.
+        # If there is no unexplored reachable edge switch to idle mode.
+        # NEXT STATES: IDLING, MOVING_INIT, EXPLORE_EDGE_INIT
+
+        
         elif state == States.explore_node:
             directions = get_min_dest_direction(graph, current_node)
             if directions == None:
@@ -122,11 +136,21 @@ def update():
                 else:
                     state = States.explore_edge_init
 
+        # Update the graph infos on the server when exiting the node. Rotate and align with the edge to explore.
+        # Start moving on the edge.
+        # NEXT_STATE: EXPLORE_EDGE_BEFORE_MARKER
+
         elif state == States.explore_edge_init:
             outupdate() # with direction or lock on edges
             move_to_edge(current_edge[1])
             state = States.explore_edge_before_marker
             #START!!!
+
+        # Try to spot a robot. If one exists solve the collision (in this case the robot always has the right of way) and
+        # start waiting until the other robot has turned around. If the position is on a marker and no robot has been spotted
+        # move past the marker.
+        # NEXT STATE: EXPLORE_EDGE
+
 
         elif state == States.explore_edge_before_marker:
             seen_robots = get_seen_robots()
@@ -139,6 +163,11 @@ def update():
                 assert (color == current_node), "Wrong marker found... Colors do not match..."
                 reset_motor_position()
                 state = States.explore_edge
+
+        # Try to spot a robot. If one exists solve the collision and starts escaping. If no collision exists and it reachers a marker
+        # see if the destination is locked. If it is locked update the edge infos and escape. Otherwise lock the destination and unlock 
+        # the starting node.
+        # NEXT_STATES: ESCAPING_INIT, EXPLORE_EDGE_AFTER_MARKER
 
         elif state == States.explore_edge:
             seen_robots = get_seen_robots() #maybe replace returned list with None or element: more shortage close ordering
@@ -161,10 +190,17 @@ def update():
                     current_node = color
                     state = States.explore_edge_after_marker
 
+        # If we find a node we release the lock on the current edge and we start the node exploration.
+        # NEXT_STATE: EXPLORE_NODE_INIT
+
         elif state == States.explore_edge_after_marker:             
             if on_node():
                 release_edge_lock(cuurent_edge)
                 state = States.explore_node_init
+
+        # Start turning. If there is a waiting mate we notify that the way is clear.
+        # If we find a marker while turning we simply go back and we run the standard escape code.
+        # NEXT_STATES: EXPLORE_EDGE_AFTER_MARKER, ESCAPING
 
         elif state == States.escaping_init:
             found_marker = turn_around() # check marker
@@ -175,18 +211,25 @@ def update():
             else:
                 state = States.escaping
 
+        # We wait until we are on a marker. We identify it and we change state to notify we are past the marker.
+        # NEXT_STATE: EXPLORE_EDGE_AFTER_MARKER
+
         elif state == States.escaping:
             if on_marker():
                 stop()
                 marker_color = identfy_marker()
                 state = explore_edge_after_marker
 
+        # We update graph infos. We move towards the edge.
+        # NEXT_STATE: MOVING_BEFORE_MARKER
+
         elif state == States.moving_init:
             outupdate() # with direction or lock on edges
             move_to_edge(current_edge[1])
-            outupdate() # with direction or lock on edges
-            move_to_edge(current_edge)
             state = States.moving_before_marker
+
+        # We wait until we are on the marker. We start moving.
+        # NEXT_STATE: MOVING
 
         elif state == States.moving_before_marker:
             if on_marker():
@@ -195,9 +238,12 @@ def update():
                 #release_lock(color)
                 state = States.moving
 
+        # If we are on a node we start exploring it. If we are on a marker and it is lock, we escape. Otherwise we release lock
+        # just as for the edge exploration.
+        # NEXT_STATES: ESCAPING_INIT, EXPLORE_EDGE_AFTER_MARKER
+
         elif state == States.moving:
             if on_node():
-                unexplored_edges.append(current_edge) #safe, no deadlocks
                 state = States.explore_node_init
             elif on_marker():
                 stop()
@@ -210,6 +256,9 @@ def update():
                     current_node = marker_color
                     state = States.explore_edge_after_marker
 
+        # We sleep for 5 seconds (measured rotation time) and we start the exploration
+        # NEXT_STATE: EXPLORE_EDGE_BEFORE_MARKER
+
         elif state == States.waiting_for_clearance:
             #response = check_messages()
             #if response:
@@ -218,9 +267,14 @@ def update():
             sleep(5) # the time needed for rotation of the mate
             state = States.explore_edge_before_marker
 
+        # We wait for 5 seconds and then we poll the node to see if we can reach an unexplored edge.
+        # NEXT_STATE: EXPLORE_NODE
+
         elif state == States.idling:
             sleep(5)
             state = States.explore_node
+
+        # Enrico did something wrong because my code is always bug free.
 
         else:
             raise Exception("Undefined state...")
