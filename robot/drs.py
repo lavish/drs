@@ -11,6 +11,7 @@ import logging
 import atexit
 import ev3dev_utils
 from time import sleep, time
+from math import sqrt
 from colorsys import rgb_to_hsv
 from urllib2 import urlopen, URLError
 from collections import deque
@@ -45,6 +46,21 @@ State = Enum('State', ('explore_node_init explore_node explore_edge_init '
                        'moving_before_marker moving idling '
                         'in_marker'))
 
+hsv_colors = {
+    0: (0.03,0.89,0.21),
+    1: (0.18,0.86,0.25),
+    3: (0.27,0.83,0.18),
+    4: (0.0,0.68,0.17),
+    5: (0.15,0.67,0.13), # border
+    6: (0.18,0.74,0.24),
+    8: (0.28,0.62,0.04),
+    11: (0.09,0.9,0.25),
+    12: (0.22,0.7,0.04),
+    15: (0.06,0.75,0.07),
+    16: (0.11,0.86,0.13),
+    17: (0.3,0.73,0.16),
+    18: (0.34,0.62,0.16)
+}
 
 # function definitions
 
@@ -180,6 +196,66 @@ def flip():
         else:
             raise Exception("Lost the track")
 
+def cross_bordered_region():
+    """Cross a bordered colored region like a marker or a node and return the
+    color."""
+    
+    color = 0
+    # assume that we are on a border
+    state = 'first_border'
+
+    motor_left.pulses_per_second_setpoint = conf.base_pulses//2
+    motor_right.pulses_per_second_setpoint = conf.base_pulses//2
+
+    while True:
+        # sample color
+        hsv_color = get_hsv_colors()
+
+        if state == 'inside':
+            # escape from the node using the saturation to determine the end of
+            # the node area
+            if not is_in_border(hsv_color[1]):
+                state = 'outside'
+            else:
+                continue
+
+        if state == 'outside':
+            sleep(0.1)
+            return color
+
+        if state == 'first_border':
+            actual_color = identify_color(hsv_color)
+            if actual_color == 5:
+                # still on the border, go on
+                continue
+            else:   
+                state = 'inside'
+                color = actual_color
+
+
+def norm(a, b):
+    """Heuristic corrections of the two colors
+    - color near to red can be recognized with hue component near to 0 or 1
+      (due to cylindrical hsv color space)
+    - the height of the color sensor wrt the surface involves heavily on the
+      value component."""
+
+    # red correction on hue component and value reduction
+    a, b = [(0 if (x[0] >= 0.9) else x[0], x[1], x[2]*0.3) for x in a, b]
+    # euclidean distance of all components (hue, saturation, value)
+    return sqrt( sum( (a - b)**2 for a, b in zip(a, b)) )
+
+def identify_color(hsv_color):
+    """Return the color that is closer to the provided triple."""
+
+    # compute the distances among the acquired color and all known colors
+    distances = {k : norm(v, hsv_color) for k, v in hsv_colors.iteritems()}
+    # return the closest one
+    return min(distances, key=distances.get)
+
+def from_marker_to_node():
+    pass
+
 def main():
     # register anti-panic handlers
     signal.signal(signal.SIGINT, reset)
@@ -211,6 +287,7 @@ def main():
 
     greet()
     initialize()
+    marker_crossed = False
     state = State.moving
     while True:
         # query the ir sensor in SEEK mode to avoid collisions
@@ -220,18 +297,29 @@ def main():
         # protocol
         hue, saturation, value = get_hsv_colors()
         if state == State.moving:
-            if is_in_border(saturation):
-                # found a marker, we need to stop as soon as we find a matching
-                # color
-                state = State.in_marker
-                stop_motors()
-                sound.speak("I found a marker!", True)
-                start_motors()
-                flip()
+            if is_in_border(saturation):    
+                if not marker_crossed:
+                    # found a marker, we need to stop as soon as we find a
+                    # matching color
+                    state = State.in_marker
+                    stop_motors()
+                else:
+                    color = cross_bordered_region()
+                    stop_motors()
+                    break
             else:
                 follow_line(value)
         elif state == State.in_marker:
-            follow_line(value, 80)
+            sound.speak("I found a marker!", True)
+            start_motors()
+            # go straight until the border is found (end of the marker reached)
+            color = cross_bordered_region()
+            stop_motors()
+            marker_crossed = True
+            logging.info("Found color {}".format(color))
+            sound.speak("Found color {}".format(color), True)
+            state = State.moving
+            start_motors()
         else:
             logging.critical("WTF?")
             break
