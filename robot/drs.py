@@ -400,6 +400,9 @@ def solve_collision(seen_robots, current_edge, travelled_distance):
 
 # [TODO] remove source and source_orientation since it's not needed, the server
 # can deduce both using the position list
+# [MERGE] it gives to the bot even the list of all bots positions
+# [MERGE] the permission to enter in such node can be deduced using other_position 
+# returned values are: (the updated graph, the position of all bots, the permission to enter in destination)
 def edge_update(destination_node, destination_orientation, edge_length):
     raise Exception('edge_update: Not implemented')
 
@@ -426,6 +429,9 @@ def update():
     # current edge is a 3-tuple: starting node, starting orientation, destination node (or unknown)
     current_edge = None
     graph = dict()
+    # [MERGE] list containing the position of all bots (even itself)
+    other_positions = []
+
     ir_buffer = [[deque(), deque()] for _ in range(4)]
     
     # queue of the last samples taken by the color sensor
@@ -457,7 +463,7 @@ def update():
                 stop_motors()
                 color = cross_bordered_area(last_hsvs, marker = True)
                 orientation = get_orientation(orientation)
-                graph, _ = edge_update(color, orientation, -1)
+                graph, other_positions, _ = edge_update(color, orientation, -1)
                 state = State.explore_edge_after_marker
 
         # Receive the updated graph, identify the node, explore the node if it is unexplored
@@ -467,7 +473,8 @@ def update():
             cross_bordered_area(last_hsvs, maker=False)
             if not explored(color): # function explored imported from graph.py
                 edges = rotate(-1) #[MERGE] I suppose
-                # [TODO] update local graph [MERGE: done later in explore_mode]
+                # [MERGE] local graph updated. Modifications commited to the server in outupdate contained in explore_edge_init
+                graph = add_unknown_edges_to_graph(graph, current_node, edges)
             state = State.explore_node
 
         # Find the direction to reach the closes unexplored edge. If the edge is adjacent to
@@ -477,7 +484,8 @@ def update():
 
         
         elif state == State.explore_node:
-            directions = get_min_dest_direction(graph, current_node)
+            filtered_graph = filter_graph(graph, robot_id, other_positions)
+            directions = get_min_dest_direction(filtered_graph, current_node)
             if directions == None:
                 state = State.idling
             else:
@@ -533,7 +541,7 @@ def update():
                 edge_length = get_motor_position()
                 color = cross_bordered_area(last_hsvs, marker = True)
                 orientation = get_orientation(orientation)
-                graph, is_locked = edge_update(color, get_complementary_orientation(orientation), edge_length)
+                graph, other_positions, is_locked = edge_update(color, get_complementary_orientation(orientation), edge_length)
                 if is_locked:
                     state = State.escaping_init
                 else:
@@ -603,7 +611,7 @@ def update():
                 # [MERGE] there is no need to call edge_update, but since we do not have inupdate any more, and we have to lock the node
                 # I'm using edge_update to notify to the server. The server can discard the information, or use the position to correct 
                 # weight
-                graph, can_enter = edge_update(color, get_complementary_orientation(orientation), get_motor_position())
+                graph, other_positions, can_enter = edge_update(color, get_complementary_orientation(orientation), get_motor_position())
                 if can_enter:
                     current_node = color
                     # [MERGE] We decided to add this state, but why? It's just duplicated code...
