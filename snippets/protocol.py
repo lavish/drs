@@ -131,10 +131,10 @@ def update():
             else:
                 dest = directions[randint(0, len(directions) - 1)]
                 current_edge = (current_node, dest[1], dest[0])
-                if dest[0] != Color.unknown.value:
-                    state = States.moving_init
-                else:
+                if dest[0] == Color.unknown.value:
                     state = States.explore_edge_init
+                else:
+                    state = States.moving_init
 
         # Update the graph infos on the server when exiting the node. Rotate and align with the edge to explore.
         # Start moving on the edge.
@@ -155,6 +155,7 @@ def update():
         elif state == States.explore_edge_before_marker:
             seen_robots = get_seen_robots()
             if len(seen_robots) > 0:
+                stop()
                 solve_collision(seen_robots, current_edge, -1)
                 state = States.waiting_for_clearance # corrosive husking candling pathos
             if on_marker():
@@ -172,6 +173,7 @@ def update():
         elif state == States.explore_edge:
             seen_robots = get_seen_robots() #maybe replace returned list with None or element: more shortage close ordering
             if len(seen_robots) > 0:
+                stop()
                 solve_collision(seen_robots, current_edge, get_motor_position())
                 waiting_mate = seen_robots[0] # since there can only be one
                 state = States.escaping_init

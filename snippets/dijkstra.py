@@ -19,11 +19,13 @@ graph = {
     Color.cyan.value:  
         [[Color.red.value, 6], [Color.violet.value, 71], None, [Color.green.value, 7]],
     Color.violet.value:
-        [[Color.orange.value, 1], None, None, [Color.cyan.value, 71]],
+        [[Color.unknown.value, -1], [Color.orange.value, 1], [Color.unknown.value, -1], [Color.cyan.value, 71]],
     Color.orange.value: 
-        [None, [Color.white.value, 10], [Color.violet.value, 1], None],
+        [[Color.violet.value, 1], [Color.white.value, 10], None, None],
     Color.white.value: 
         [None, None, None, [Color.orange.value, 10]]}
+
+status = [Color.red.value, Color.cyan.value]
 
 def indexof(predicate, data):
     for i, x in enumerate(data):
@@ -135,16 +137,27 @@ def get_min_dest_direction(graph, source):
     destination = weighted_nodes[0][1]
     if destination == source:
         unexplored = indexof_many(lambda edge: edge != None and edge[0] == Color.unknown.value, graph[destination])
-        return [(destination, d) for d in unexplored]
+        return [(Color.unknown.value, d) for d in unexplored]
     tmp_dist = destination
     while previous[tmp_dist] != source:
         tmp_dist = previous[tmp_dist]
     idx = indexof(lambda edge: edge != None and edge[0] == tmp_dist, graph[source])
-    return (tmp_dist, idx)
+    return [(tmp_dist, idx)]
     
+def filter_graph(graph, bot_id, positions):
+    other_positions = [p for i, p in enumerate(positions) if i != bot_id]
+    filtered_graph = {}
+    for node, edges in graph.iteritems():
+        if indexof(lambda p: p == node, other_positions) == -1:
+            filtered_edges = map(lambda edge: None if edge == None or indexof(lambda p: p == edge[0], other_positions) != -1 else edge, edges)
+            filtered_graph[node] = filtered_edges
+    return filtered_graph
 
 def main():
-    edges = get_min_dest_direction(graph, Color.red.value)
+    my_id = 1
+    my_color = status[my_id]
+    filtered_graph = filter_graph(graph, my_id, status)
+    edges = get_min_dest_direction(filtered_graph, my_color)
     print(edges)
     #print(shortest_path(graph, Color.green.value, None))
     #print(get_next_direction(graph, Color.red.value, Color.orange.value))

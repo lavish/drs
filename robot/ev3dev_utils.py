@@ -15,13 +15,9 @@ def run_for(motor, power=75, ever=None, seconds=None, degrees=None):
     """
 
     if motor.regulation_mode == ev3dev.motor.mode_on:
-        if motor.type() == 'tacho':
-            motor.pulses_per_second_setpoint = int(power * 9)
-        elif motor.type() == 'minitacho':
-            motor.pulses_per_second_setpoint = int(power * 12)
+        motor.pulses_per_second_setpoint = int(power)
     else:
         motor.duty_cycle_setpoint = int(power)
-
     if ever is not None:
         motor.run_mode = ev3dev.motor.run_mode_forever
     elif seconds is not None:
@@ -35,7 +31,7 @@ def run_for(motor, power=75, ever=None, seconds=None, degrees=None):
 
     motor.run()
 
-def run_until(motor, power=75, degrees=None, check=None, check_interval=0.01):
+def run_until(motor, power=75, degrees=None, check=None):
     """ Run motor until specified position or until check() evaluates to True.
 
     Examples:
@@ -71,8 +67,6 @@ def run_until(motor, power=75, degrees=None, check=None, check_interval=0.01):
         elif check():
             motor.stop()
             break
-
-        time.sleep(check_interval)
 
 def drive_for(left_motor, right_motor, direction=0, power=75, ever=None, seconds=None):
     """ Run both motors for a specified amount of seconds, or forever. The
