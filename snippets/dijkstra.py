@@ -1,6 +1,7 @@
 from __future__ import division
 
 from enum import Enum
+from copy import deepcopy
 
 
 infinity = float('inf')
@@ -158,6 +159,13 @@ def filter_graph(graph, bot_id, positions):
             filtered_edges = map(lambda edge: None if edge == None or indexof(lambda p: p == edge[0], other_positions) != -1 else edge, edges)
             filtered_graph[node] = filtered_edges
     return filtered_graph
+
+def add_unknown_edges_to_graph(graph, starting_node, orientations):
+    up_graph = deepcopy(graph)
+    edges = [(Color.unknown.value, -1) if exists else None for exists in orientations]
+    #if not graph.has_key[starting_node]:
+    up_graph[starting_node] = edges
+    return up_graph
 
 
 #def filter_graph_2(graph, bot_id, positions, orientation):
