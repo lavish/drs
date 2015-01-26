@@ -51,11 +51,11 @@ last_hsvs = deque()
 # zmq context definitions
 context = zmq.Context()
 # possible states
-State = Enum('State', ('explore_node_init explore_node explore_edge_init '
-                       'explore_edge_before_marker explore_edge escaping_init '
+State = Enum('State', ('begin explore_node_init explore_node '
+                       'explore_edge_init explore_edge_before_marker '
+                       'explore_edge explore_edge_after_marker escaping_init '
                        'escaping waiting_for_clearance moving_init '
-                       'moving_before_marker moving idling '
-                        'in_marker'))
+                       'moving_before_marker moving moving_after_marker idling'))
 
 # function definitions
 
@@ -123,10 +123,8 @@ def initialize():
     # prepare the motors
     motor_left.regulation_mode = motor.mode_on
     motor_right.regulation_mode = motor.mode_on
-    motor_left.run_mode = motor.run_mode_forever
-    motor_right.run_mode = motor.run_mode_forever
-    motor_left.run()
-    motor_right.run()
+    # set motors ready to run
+    start_motors()
 
 def get_hsv_colors():
     """Return the Hue, Saturation, Value triple of the sampled color assuming
@@ -167,7 +165,7 @@ def identify_color(hsv_color):
     # return the closest one
     return min(distances, key=distances.get)
 
-def in_border():
+def on_border():
     """Use the saturation mean to see if we fall on a border."""
 
     saturation = mean([hsv[1] for hsv in last_hsvs])
@@ -240,7 +238,7 @@ def rotate(direction = -1):
 
     return edges if direction == -1 else None
 
-def cross_bordered_region(marker=True):
+def cross_bordered_area(marker=True):
     """Cross a bordered colored region and return the color."""
     
     color = conf.Color.unknown
@@ -281,12 +279,12 @@ def cross_bordered_region(marker=True):
                 logging.info(color)
         elif local_state == 'sampled':
             # determine the end of the bordered area using the saturation
-            if not in_border():
+            if not on_border():
                 return color
         else:
             raise Exception("Uh?")
 
-def flip():
+def turn_around():
     """Change direction to avoid collisions and tell if a marker is found."""
 
     marker_found = False
@@ -310,7 +308,7 @@ def flip():
                 # we are performing the rotation ovr the marker
                 break
         elif motor_left.position > conf.full_rotation_degrees//3 and value < mid_value:
-            # we performed the flip and we are back on track
+            # we performed the turn_around and we are back on track
             break
         elif motor_left.position < conf.full_rotation_degrees*0.75:
             # clockwise rotation
@@ -357,6 +355,210 @@ def color_distance(a, b):
     # euclidean distance of all components (hue, saturation, value)
     return sqrt(sum((a - b)**2 for a, b in zip(a, b)))
 
+def get_orientation(old_orientation):
+    delta_motors = motor_left.position - motor_right.position
+    orientation = int(round(delta_motors / conf.turn_rotation_difference) + old_orientation) % 4 
+
+    return orientation
+
+# [TODO] remove source and source_orientation since it's not needed, the server
+# can deduce both using the position list
+def edge_update(destination_node, destination_orientation, edge_length):
+    raise Exception('edge_update: Not implemented')
+
+def update():
+    """OMG our huge state machine!!!!!!! x_X."""
+    
+    state = State.begin
+    orientation = conf.robot_id
+    current_node = Color.unknown
+    graph = dict()
+
+    while True:
+        # [TODO] insert here control operations (e.g. follow_line, sample
+        # colors, etc) wrt states
+
+        # update the global color queue
+        get_hsv_colors()
+
+        # Begin before a marker, update the vertex infos.
+        # NEXT_STATE: EXPLORE_EDGE_AFTER_MARKER.
+        if state == State.begin:
+            if on_border():
+                stop_motors()
+                color = cross_bordered_area(marker = True)
+                orientation = get_orientation()
+                graph, _ = edge_update(color, orientation, -1)
+                state = State.explore_edge_after_marker
+
+        # Receive the updated graph, identify the node, explore the node if it is unexplored
+        # by rotating around and counting the edges under the color sensor.
+        # NEXT STATE: EXPLORE_NODE
+        elif state == State.explore_node_init:
+            cross_bordered_area(maker=False)
+            if not explored(color):
+                edges = rotate_in_node()
+                # [TODO] update local graph
+            state = State.explore_node
+
+        # Find the direction to reach the closes unexplored edge. If the edge is adjacent to
+        # the current node then start exploring it, otherwise move to the node in the minimum path.
+        # If there is no unexplored reachable edge switch to idle mode.
+        # NEXT STATES: IDLING, MOVING_INIT, EXPLORE_EDGE_INIT
+
+        
+        elif state == State.explore_node:
+            directions = get_min_dest_direction(graph, current_node)
+            if directions == None:
+                state = State.idling
+            else:
+                dest = directions[randint(0, len(directions) - 1)]
+                current_edge = (current_node, dest[1], dest[0])
+                if dest[0] == Color.unknown.value:
+                    state = State.explore_edge_init
+                else:
+                    state = State.moving_init
+
+        # Update the graph infos on the server when exiting the node. Rotate and align with the edge to explore.
+        # Start moving on the edge.
+        # NEXT_STATE: EXPLORE_EDGE_BEFORE_MARKER
+
+        elif state == State.explore_edge_init:
+            outupdate() # with direction or lock on edges
+            move_to_edge(current_edge[1])
+            state = State.explore_edge_before_marker
+            #START!!!
+
+        # Try to spot a robot. If one exists solve the collision (in this case the robot always has the right of way) and
+        # start waiting until the other robot has turned around. If the position is on a marker and no robot has been spotted
+        # move past the marker.
+        # NEXT STATE: EXPLORE_EDGE
+
+
+        elif state == State.explore_edge_before_marker:
+            seen_robots = get_seen_robots()
+            if len(seen_robots) > 0:
+                stop()
+                solve_collision(seen_robots, current_edge, -1)
+                state = State.waiting_for_clearance # corrosive husking candling pathos
+            if on_border():
+                stop()
+                cross_bordered_area()
+                reset_motor_position()
+                state = State.explore_edge
+
+        # Try to spot a robot. If one exists solve the collision and starts escaping. If no collision exists and it reachers a marker
+        # see if the destination is locked. If it is locked update the edge infos and escape. Otherwise lock the destination and unlock 
+        # the starting node.
+        # NEXT_STATES: ESCAPING_INIT, EXPLORE_EDGE_AFTER_MARKER
+
+        elif state == State.explore_edge:
+            seen_robots = get_seen_robots() #maybe replace returned list with None or element: more shortage close ordering
+            if len(seen_robots) > 0:
+                stop()
+                solve_collision(seen_robots, current_edge, get_motor_position())
+                state = State.escaping_init
+            elif on_border():
+                stop()
+                edge_length = get_motor_position()
+                marker_color = cross_bordered_area()
+                orientation = get_orientation()
+                is_locked = edge_update(current_edge[0], current_edge[2], marker_color, orientation, edge_length)
+                if is_locked:
+                    state = State.escaping_init
+                else:
+                    current_node = marker_color
+                    state = State.explore_edge_after_marker
+
+        # If we find a node we release the lock on the current edge and we start the node exploration.
+        # NEXT_STATE: EXPLORE_NODE_INIT
+
+        elif state == State.explore_edge_after_marker:             
+            if on_border():
+                state = State.explore_node_init
+
+        # Start turning. If there is a waiting mate we notify that the way is clear.
+        # If we find a marker while turning we simply go back and we run the standard escape code.
+        # NEXT_STATES: EXPLORE_EDGE_AFTER_MARKER, ESCAPING
+
+        elif state == State.escaping_init:
+            found_marker = turn_around() # check marker
+            #if waiting_mate != None:
+            #    notify_clearance(waiting_mate) # to be removed if waiting_for_clearance only sleeps for some seconds
+            if found_marker:
+                state = State.explore_edge_after_marker
+            else:
+                state = State.escaping
+
+        # We wait until we are on a marker. We identify it and we change state to notify we are past the marker.
+        # NEXT_STATE: EXPLORE_EDGE_AFTER_MARKER
+
+        elif state == State.escaping:
+            if on_border():
+                stop()
+                cross_bordered_area()
+                state = State.explore_edge_after_marker
+
+        # We update graph infos. We move towards the edge.
+        # NEXT_STATE: MOVING_BEFORE_MARKER
+
+        elif state == State.moving_init:
+            outupdate() # with direction or lock on edges
+            move_to_edge(current_edge[1])
+            state = State.moving_before_marker
+
+        # We wait until we are on the marker. We start moving.
+        # NEXT_STATE: MOVING
+
+        elif state == State.moving_before_marker:
+            if on_border():
+                stop()
+                cross_bordered_area()
+                state = State.moving
+
+        # If we are on a node we start exploring it. If we are on a marker and it is lock, we escape. Otherwise we release lock
+        # just as for the edge exploration.
+        # NEXT_STATES: ESCAPING_INIT, EXPLORE_EDGE_AFTER_MARKER
+
+        elif state == State.moving:
+            if on_border():
+                stop()
+                marker_color = cross_bordered_area()
+                can_enter = inupdate(marker_color)
+                if can_enter:
+                    current_node = marker_color
+                    state = State.explore_edge_after_marker
+                else:
+                    state = State.escaping_init
+
+
+        elif state == State.moving_after_marker:
+            if on_border():
+                state = State.explore_node_init
+                
+        # We sleep for 5 seconds (measured rotation time) and we start the exploration
+        # NEXT_STATE: EXPLORE_EDGE_BEFORE_MARKER
+
+        elif state == State.waiting_for_clearance:
+            #response = check_messages()
+            #if response:
+            #    state = State.explore_edge_before_marker
+            #else:
+            sleep(5) # the time needed for rotation of the mate
+            state = State.explore_edge_before_marker
+
+        # We wait for 5 seconds and then we poll the node to see if we can reach an unexplored edge.
+        # NEXT_STATE: EXPLORE_NODE
+
+        elif state == State.idling:
+            sleep(5)
+            state = State.explore_node
+
+        # Enrico did something wrong because my code is always bug free.
+
+        else:
+            raise Exception("Undefined state...")
+
 def main():
     # register anti-panic handlers
     signal.signal(signal.SIGINT, reset)
@@ -374,23 +576,16 @@ def main():
     server = Thread(name='MessageServer', target=message_server)
     server.setDaemon(True)
     server.start()
-
-    '''
-    # instance of the socket used for sending messages
-    sock = context.socket(zmq.REQ)
-    logging.info("connecting")
-    sock.connect("tcp://192.168.10.101:{}".format(conf.robot_port))
-    logging.info("sending message")
-    sock.send("HALT")
-    logging.info("receiving message")
-    print(sock.recv())
-    '''
+    # [TODO] create the socket for sending messages
 
     greet()
     initialize()
-    marker_crossed = False
-    state = State.moving
+    update()
+    reset()
+    # [TODO] join the MessageServer thread
+    sys.exit(0)
 
+    '''
     while True:
         # query the ir sensor in SEEK mode to avoid collisions
         avoid_collision()
@@ -399,14 +594,14 @@ def main():
         # protocol
         hue, saturation, value = get_hsv_colors()
         if state == State.moving:
-            if in_border():
+            if on_border():
                 if not marker_crossed:
                     # found a marker, we need to stop as soon as we find a
                     # matching color
                     state = State.in_marker
                     stop_motors()
                 else:
-                    color = cross_bordered_region(marker=False)
+                    color = cross_bordered_area(marker=False)
                     available_edges = rotate()
                     stop_motors()
                     sound.speak("Found edges on positions {}".format(', '.join(str(i) for i in range(4) if available_edges[i])), True)
@@ -422,7 +617,7 @@ def main():
             #sound.speak("I found a marker!", True)
             start_motors()
             # go straight until the border is found (end of the marker reached)
-            color = cross_bordered_region()
+            color = cross_bordered_area()
             stop_motors()
             marker_crossed = True
             logging.info("Found color {}".format(color))
@@ -432,10 +627,7 @@ def main():
         else:
             logging.critical("WTF?")
             break
-
-    reset()
-    # [TODO] join the MessageServer thread
-    sys.exit(0)
+    '''
 
 if __name__ == '__main__':
     main()

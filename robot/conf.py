@@ -5,7 +5,7 @@ from enum import Enum
 
 # [CHANGE ME]
 # set this value to reflect the id of your robot. Allowed values are [0..3]
-my_robot_id = 0
+robot_id = 0
 
 # number of ir samples to consider for median calculation
 n_ir_samples = 51
@@ -25,6 +25,7 @@ base_pulses = 200
 slow_pulses = 100
 # number of cicles needed to complete a full 360 rotation
 full_rotation_degrees = 905
+turn_rotation_difference = 270
 
 # web server ip/port
 web_server_ip = '10.42.0.1'
