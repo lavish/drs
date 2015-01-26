@@ -37,7 +37,7 @@ robot_ips = ['10.42.0.{}'.format(3+i) for i in range(1, 5)]
 robot_port = 31337
 
 # all the possible colors assumed by the nodes in the graph, plus unknown
-Color = Enum('Color', 'red yellow green magenta sadyellow darkgreen orange sadbrown darkred sadgreen cyan')
+Color = Enum('Color', 'red yellow green magenta sadyellow darkgreen orange sadbrown darkred sadgreen cyan unknown')
 hsv_colors = {
     'darkgreen': (0.28, 0.62, 0.04),
     'sadyellow': (0.18, 0.74, 0.24),
