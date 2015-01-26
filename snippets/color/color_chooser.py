@@ -159,16 +159,17 @@ def main():
     # Removes the ambiguous colors from those which are acquired
     invalidColors = []
     for colorId in data:
-        for colorId2 in data:
-            if colorId == colorId2 or colorId in invalidColors:
-                break
+        if colorId in invalidColors:
+            continue
+        for colorId2 in {k: v for k, v in data.iteritems() if k > colorId and not k in invalidColors}:
             if norm(data[colorId], data[colorId2]) < minDistColor:
-                invalidColors.append(colorId)
+                invalidColors.append(colorId2)
 
     data = {k: v for k, v in data.iteritems() if not (k in invalidColors)}
+    sortedIndex = sorted(data)
 
     print ("List of %d accepted colors (min distance %.2f and saturation %.2f) by Id:" % (len(data), minDistColor, saturationLimit))
-    for colorId in data:
+    for colorId in sortedIndex:
         print (str(colorId) + ": (" + ",".join([str(round(x,2)) for x in data[colorId]]) + "),")
 
 if __name__ == '__main__':
