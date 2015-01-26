@@ -20,8 +20,15 @@ from threading import Thread
 from enum import Enum
 from ev3dev import *
 
-# [TODO] add all the other authors
-__authors__ = ["Marco Squarcina <squarcina at dais.unive.it>"]
+# [TODO] are all the mails correct?
+__authors__ = ["Marco Squarcina <squarcina at dais.unive.it>", 
+               "Enrico Steffinlongo <enrico.steffinlongo at unive.it>",
+               "Francesco Di Giacomo <fdigiacom at gmail.com>",
+               "Michele Schiavinato <mschiavi at dais.unive.it>",
+               "Alan Del Piccolo <alan.delpiccolo at gmail.com>",
+               "Filippo Cavallin <840031 at stud.unive.it>",
+               "Eyasu Zemene Mequanint <eyasu201011 at gmail.com>"]
+
 __status__  =  "Development"
 
 
@@ -38,6 +45,8 @@ ir_buffer = [[deque(), deque()] for _ in range(4)]
 ir_medians = [[None, None] for _ in range(4)]
 # mean between the value of the line and the plane
 mid_value = (conf.line_value + conf.plane_value)/2
+# queue of the last samples taken by the color sensor
+last_hsvs = deque()
 
 # zmq context definitions
 context = zmq.Context()
@@ -153,7 +162,12 @@ def get_hsv_colors():
     """Return the Hue, Saturation, Value triple of the sampled color assuming
     that the color sensor is in RAW-RGB mode."""
 
-    return rgb_to_hsv(*[col_sensor.value(i)/1022 for i in range(col_sensor.num_values())])
+    hsv = rgb_to_hsv(*[col_sensor.value(i)/1022 for i in range(col_sensor.num_values())])
+    if len(last_hsvs) >= conf.n_col_samples:
+        last_hsvs.popleft()
+    last_hsvs.append(hsv)
+
+    return hsv
 
 def avoid_collision():
     # query the ir sensor in SEEK mode to avoid collisions
@@ -178,6 +192,7 @@ def avoid_collision():
     print()
 
 def is_in_border(saturation):
+    saturation = sum(hsv[1] for hsv in last_hsvs)/len(last_hsvs)
     return saturation > conf.border_saturation_thr
 
 def flip():
@@ -313,7 +328,7 @@ def norm(a, b):
     # red correction on hue component and value reduction
     a, b = [(0 if (x[0] >= 0.9) else x[0], x[1], x[2]*0.3) for x in a, b]
     # euclidean distance of all components (hue, saturation, value)
-    return sqrt( sum( (a - b)**2 for a, b in zip(a, b)) )
+    return sqrt(sum((a - b)**2 for a, b in zip(a, b)))
 
 def identify_color(hsv_color):
     """Return the color that is closer to the provided triple."""

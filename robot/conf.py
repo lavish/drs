@@ -8,7 +8,7 @@ from enum import Enum
 my_robot_id = 0
 
 # number of ir samples to consider for median calculation
-n_ir_samples = 15
+n_ir_samples = 51
 
 # constant for the line following task: the lower the smoother
 proportional_const = 500
