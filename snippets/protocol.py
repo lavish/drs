@@ -15,19 +15,21 @@ from random import randint
 
 import dijkstra
 
-States = Enum('States', 'explore_node_init explore_node explore_edge_init explore_edge_before_marker explore_edge explore_edge_after_marker escaping_init escaping waiting_for_clearance moving_init moving_before_marker moving idling')
+States = Enum('States', 'begin explore_node_init explore_node explore_edge_init explore_edge_before_marker explore_edge explore_edge_after_marker escaping_init escaping waiting_for_clearance moving_init moving_before_marker moving idling')
 
-global current_state = States.explore_node_init
+global state = States.explore_node_init
 
 global graph = dict()
+
+global bots_positions = []
 
 global current_node = Color.red.value
 
 global current_edge = [Color.red.value, (Color.unknown.value, -1), Direction.n.value]
 
-#global unexplored_edges = []
+global waiting_mate = None  # to be removed if waiting_for_clearance only sleeps for some seconds
 
-global waiting_mate = None
+global my_id = 0
 
 def stop():
     raise Exception('Stop: Not implemented')
@@ -38,14 +40,46 @@ def inupdate():
 def outupdate():
     raise Exception('outupdate: To be imported')
 
-def scan_node():
-    raise Exception('scan_node: Not implemented')
-
-def move_to_edge(edge):
-    raise Exception('move_to_edge: Not implemented')
+def update_global():
+    raise Exception('update_graph: Not implemented')
+    updated_graph, updated_bots_positions = query_server()
+    graph = updated_graph
+    bots_positions = updated_bots_positions
+    #return updated_graph, updated_bots_positions
 
 def edge_update(source, source_orientation, destination, destination_orientation, edge_length):
     raise Exception('edge_update: Not implemented')
+
+def solve_collision(seen_robots, current_edge, travelled_distance):
+    raise Exception('solve_collision: Not implemented')
+    #if travelled_distance == -1: the bot is before marker
+
+def notify_clearance(rotating_mate): # to be removed if waiting_for_clearance only sleeps for some seconds
+    raise Exception('notify_clearance: Not implemented') # to be removed if waiting_for_clearance only sleeps for some seconds
+
+def rotate_in_node():
+    raise Exception('rotate_in_node: Not implemented')
+
+def move_to_edge(direction):
+    raise Exception('move_to_edge: Not implemented')
+
+def update_lock(color):
+    raise Exception('update_lock: Not implemented')
+
+#def release_lock(color):
+#    raise Exception('release_lock: Not implemented')
+
+def is_locked(color):
+    update_global()
+    other_positions = [p for i, p in enumerate(bots_positions) if i != my_id]
+    return dijkstra.contains(lambda pos: pos == color, other_positions)
+
+def explored(color):
+    update_global()
+    return dijkstra.explored(graph, color)
+
+def turn_around():
+    raise Exception('turn_around: Not implemented')
 
 def get_seen_robots():
     raise Exception('get_seen_robots: Not implemented')
@@ -53,35 +87,14 @@ def get_seen_robots():
 def on_marker():
     raise Exception('on_marker: Not implemented')
 
+def on_node():
+    raise Exception('on_node: Not implemented')
+
 def identfy_marker():
     raise Exception('identfy_marker: Not implemented')
 
-def explored():
-    raise Exception('explored: Not implemented')
-
 def identfy_node():
     raise Exception('identfy_node: Not implemented')
-
-def release_lock(color):
-    raise Exception('release_lock: Not implemented')
-
-def release_edge_lock(edge):
-    raise Exception('release_edge_lock: Not implemented')
-
-def lock(color):
-    raise Exception('lock: Not implemented')
-
-def is_locked(color):
-    raise Exception('is_locked: Not implemented')
-
-def is_edge_locked(edge):
-    raise Exception('is_edge_locked: Not implemented')
-
-def filter_locked(graph):
-    raise Exception('filter_locked: Not implemented')
-
-def right_of_way(seen_robots):
-    raise Exception('right_of_way: Not implemented')
 
 def reset_motor_position():
     raise Exception('reset_motor_position: Not implemented')
@@ -89,25 +102,31 @@ def reset_motor_position():
 def get_motor_position():
     raise Exception('get_motor_position: Not implemented')
 
-def turn_around():
-    raise Exception('turn_around: Not implemented')
+def get_orientation():
+    raise Exception('get_orientation: Not implemented')
 
-def notify_clearance(rotating_mate):
-    raise Exception('notify_clearance: Not implemented')
-
-def filter_explored():
-    raise Exception('filter_explored: Not implemented')
-
-def seventeen():
-    raise Exception('seventeen: Not implemented')
 
 def update():
     while True:
+
+        # Begin before a marker, update the vertex infos.
+        # NEXT_STATE: EXPLORE_EDGE_AFTER_MARKER.
+
+        if state == States.begin:
+            if on_marker():
+                stop()
+                marker_color = identfy_marker()
+                orientation = get_orientation()
+                edge_update(Color.unknown.value, -1, marker_color, orientation, -1)
+                update_lock(color)
+                current_node = color
+                state = States.explore_edge_after_marker
+
         # Receive the updated graph, identify the node, explore the node if it is unexplored
         # by rotating around and counting the edges under the color sensor.
         # NEXT STATE: EXPLORE_NODE
 
-        if state == States.explore_node_init:
+        elif state == States.explore_node_init:
             stop()
             inupdate()
             color = identify_node()
@@ -187,8 +206,7 @@ def update():
                     rotating_mate = None
                     state = States.escaping_init
                 else:
-                    lock(color)
-                    release_lock(current_node)
+                    update_lock(color)
                     current_node = color
                     state = States.explore_edge_after_marker
 
@@ -197,7 +215,6 @@ def update():
 
         elif state == States.explore_edge_after_marker:             
             if on_node():
-                release_edge_lock(cuurent_edge)
                 state = States.explore_node_init
 
         # Start turning. If there is a waiting mate we notify that the way is clear.
@@ -207,7 +224,7 @@ def update():
         elif state == States.escaping_init:
             found_marker = turn_around() # check marker
             if waiting_mate != None:
-                notify_clearance(waiting_mate)
+                notify_clearance(waiting_mate) # to be removed if waiting_for_clearance only sleeps for some seconds
             if found_marker:
                 state = States.explore_edge_after_marker
             else:
@@ -237,7 +254,6 @@ def update():
             if on_marker():
                 stop()
                 color = identfy_marker()
-                #release_lock(color)
                 state = States.moving
 
         # If we are on a node we start exploring it. If we are on a marker and it is lock, we escape. Otherwise we release lock
@@ -253,8 +269,7 @@ def update():
                 if is_locked(marker_color):
                     state = States.escaping_init
                 else
-                    lock(marker_color)
-                    release_lock(current_node)
+                    update_lock(marker_color)
                     current_node = marker_color
                     state = States.explore_edge_after_marker
 

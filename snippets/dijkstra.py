@@ -33,6 +33,12 @@ def indexof(predicate, data):
             return i
     return -1
 
+def contains(predicate, data):
+    for x in data:
+        if predicate(x):
+            return True
+    return False
+
 def indexof_many(predicate, data):
     return [ i for i, x in enumerate(data) if predicate(x) ]
 
@@ -152,6 +158,23 @@ def filter_graph(graph, bot_id, positions):
             filtered_edges = map(lambda edge: None if edge == None or indexof(lambda p: p == edge[0], other_positions) != -1 else edge, edges)
             filtered_graph[node] = filtered_edges
     return filtered_graph
+
+
+#def filter_graph_2(graph, bot_id, positions, orientation):
+#
+#    other_positions = [p for i, p in enumerate(positions) if i != bot_id]
+#    other_state = []
+#    for pos in other_positions:
+#
+#    filtered_graph = {}
+#    for node, edges in graph.iteritems():
+#        if indexof(lambda p: p == node, other_positions) == -1:
+#            filtered_edges = map(lambda edge: None if edge == None or indexof(lambda p: p == edge[0], other_positions) != -1 else edge, edges)
+#            filtered_graph[node] = filtered_edges
+#    return filtered_graph
+
+def explored(graph, color):
+    return graph.has_key(color)
 
 def main():
     my_id = 1
