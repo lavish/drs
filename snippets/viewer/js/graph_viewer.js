@@ -54,7 +54,7 @@ var render = function (r, n) {
 	return shape;
 };
 // URL of the current discovered graph coded as JSON Object
-var discoverJSONGraphURL = 'graph.txt';
+var discoverJSONGraphURL = 'graph';
 // Delay of the request to check updates on the current graph in milliseconds
 var updateDelay = 1000;
 
