@@ -92,7 +92,7 @@ def main():
         1: (0.18,0.86,0.25),
         3: (0.27,0.83,0.18),
         4: (0.0,0.68,0.17),
-        #5: (0.15,0.67,0.13), #border color
+        # 5: (0.15,0.67,0.13), # Excluded (border color)
         6: (0.18,0.74,0.24),
         8: (0.28,0.62,0.04),
         11: (0.09,0.9,0.25),
@@ -100,6 +100,9 @@ def main():
         15: (0.06,0.75,0.07),
         17: (0.3,0.73,0.16),
         18: (0.34,0.62,0.16),
+        20: (0.1,0.62,0.09),
+        34: (0.24,0.76,0.2),
+        36: (0.12,0.85,0.2),
     }
     """
 
@@ -115,7 +118,10 @@ def main():
 		{"paletteId": 12, "fhsv":(0.22,0.7,0.04), "color":"#51510B", "label":"Sad Brown"},
 		{"paletteId": 15, "fhsv":(0.06,0.75,0.07), "color":"#A20000", "label":"Dark Red"},
 		{"paletteId": 17, "fhsv":(0.3,0.73,0.16), "color":"#6EB75F", "label":"Sad Green"},
-		{"paletteId": 18, "fhsv":(0.34,0.62,0.16), "color":"#46C993", "label":"Cyan"}
+		{"paletteId": 18, "fhsv":(0.34,0.62,0.16), "color":"#46C993", "label":"Cyan"},
+        {"paletteId": 20, "fhsv":(0.1,0.62,0.09), "color":"#9B5E5E", "label":"Dark Pink"},
+        {"paletteId": 34, "fhsv":(0.24,0.76,0.2), "color":"#AFFF75", "label":"Pasty Green"},
+        {"paletteId": 36, "fhsv":(0.12,0.85,0.2), "color":"#F9A334", "label":"Sad Orange"}
     ]
 
     print ("Read color to recognize (press 'enter' to acquire, 'e' to exit):")
