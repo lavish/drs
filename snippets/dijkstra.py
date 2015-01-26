@@ -9,19 +9,21 @@ infinity = float('inf')
 Direction = Enum('Direction', 'n e s w i')
 # all the possible colors used for nodes, including 'unknown' when the color of
 # a node is not yet known
-Color = Enum('Color', 'red green cyan violet orange unknown')
+Color = Enum('Color', 'red green cyan violet orange white unknown')
 
 graph = { 
     Color.red.value: 
         [None, [Color.unknown.value, -1], [Color.cyan.value, 6], [Color.green.value, 5]],
     Color.green.value: 
-        [[Color.red.value, 5], [Color.cyan.value, 6], None,None],
+        [[Color.red.value, 5], [Color.cyan.value, 7], None,None],
     Color.cyan.value:  
-        [None, [Color.violet.value, 10], [Color.green.value, 6], [Color.red.value, 6]],
+        [[Color.red.value, 6], [Color.violet.value, 71], None, [Color.green.value, 7]],
     Color.violet.value:
-        [None, None, [Color.unknown.value, -1], [Color.cyan.value, 10]],
+        [[Color.orange.value, 1], None, None, [Color.cyan.value, 71]],
     Color.orange.value: 
-        [None, None, None, None] }
+        [None, [Color.white.value, 10], [Color.violet.value, 1], None],
+    Color.white.value: 
+        [None, None, None, [Color.orange.value, 10]]}
 
 def indexof(predicate, data):
     for i, x in enumerate(data):
@@ -68,7 +70,7 @@ def shortest_path(graph, source_node, destination_node):
         # See http://www.personal.kent.edu/~rmuhamma/Algorithms/MyAlgorithms/GraphAlgor/dijkstraAlgor.htm
         u = q[0]
         for node in q[1:]:
-            if (dist.has_key(node) and dist[node] < dist[u]) : #why the hell not dist.has_key(u)?? REMOVED: not dist.has_key(u) or
+            if not dist.has_key(u) or (dist.has_key(node) and dist[node] < dist[u]) : #why the hell not dist.has_key(u)?? REMOVED: not dist.has_key(u) or
                 u = node
         q.remove(u)
 
@@ -79,11 +81,17 @@ def shortest_path(graph, source_node, destination_node):
         neighbours = [ n for n in graph[u] if n != None and n[0] != Color.unknown.value]
         for v, dv in neighbours:
             if v in q:
-                alt = dist[u] + dv                #arrow weight
+                alt = dist[u] + dv if dist.has_key(u) else infinity                #arrow weight
                 if (not dist.has_key(v)) or (alt < dist[v]):
                     dist[v] = alt
                     previous[v] = u
-
+    to_delete = []
+    for k, v in dist.iteritems():
+        if v == infinity:
+            to_delete.append(k)
+    for k in to_delete:
+        del dist[k]
+        del previous[k]
     return (dist, previous)
 
 def get_next_direction(graph, source, destination):
@@ -100,25 +108,34 @@ def get_edges(graph, node):
     edge = [(node, e, indexof(lambda edge: edge == e, graph[node])) for e in graph[node] if e != None]
     return edge
 
-def get_unexplored_edges(graph, node):
-    edge = [(node, e, indexof(lambda edge: edge == e, graph[node])) for e in graph[node] if e != None and e[0] == Color.unknown.value]
+def get_near_unexplored_edges(graph, node):
+    edge = []
+    for e in graph[node]:
+        if e != None and e[0] == Color.unknown.value:
+            edge.append(node, e, indexof(lambda edge: edge == e, graph[node]))
+    #edge = [(node, e, indexof(lambda edge: edge == e, graph[node])) for e in graph[node] if e != None and e[0] == Color.unknown.value]
     return edge
 
 def get_available_unexplored(graph, node):
-    nodes = filter(lambda (node, edges): indexof(lambda edge: edge != None and edge[0] == Color.unknown.value, edges) != -1, graph.iteritems())
+    nodes = []
+    for node, edges in graph.iteritems():
+        if indexof(lambda edge: edge != None and edge[0] == Color.unknown.value, edges) != -1:
+            nodes.append((node, edges))
+    #nodes = filter(lambda (node, edges): indexof(lambda edge: edge != None and edge[0] == Color.unknown.value, edges) != -1, graph.iteritems())
     return nodes
 
 def get_min_dest_direction(graph, source):
     nodes = get_available_unexplored(graph, source)
     dists, previous = shortest_path(graph, source, None)
     nodes = filter(lambda (node, edge): dists.has_key(node), nodes)
-    if nodes == None:
+    if nodes == None or nodes == []:
         return None
     weighted_nodes = [(dists[n], n) for (n, e) in nodes]
-    weighted_nodes.sort()
+    weighted_nodes = sorted(weighted_nodes, key=lambda (d, n): d)
     destination = weighted_nodes[0][1]
     if destination == source:
-        return destination
+        unexplored = indexof_many(lambda edge: edge != None and edge[0] == Color.unknown.value, graph[destination])
+        return [(destination, d) for d in unexplored]
     tmp_dist = destination
     while previous[tmp_dist] != source:
         tmp_dist = previous[tmp_dist]
@@ -129,7 +146,7 @@ def get_min_dest_direction(graph, source):
 def main():
     edges = get_min_dest_direction(graph, Color.red.value)
     print(edges)
-    #print(shortest_path(graph, Color.red.value, None))
+    #print(shortest_path(graph, Color.green.value, None))
     #print(get_next_direction(graph, Color.red.value, Color.orange.value))
 
 
