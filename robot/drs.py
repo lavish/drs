@@ -9,7 +9,7 @@ import zmq
 import conf
 import logging
 import atexit
-import ev3dev_utils
+import random
 from time import sleep, time
 from math import sqrt
 from colorsys import rgb_to_hsv
@@ -18,8 +18,17 @@ from collections import deque
 from threading import Thread
 from enum import Enum
 from ev3dev import *
+from ev3dev_utils import *
 
-__authors__ = ["Marco Squarcina <squarcina at dais.unive.it>"]
+# [TODO] are all the mails correct?
+__authors__ = ["Marco Squarcina <squarcina at dais.unive.it>", 
+               "Enrico Steffinlongo <enrico.steffinlongo at unive.it>",
+               "Francesco Di Giacomo <fdigiacom at gmail.com>",
+               "Michele Schiavinato <mschiavi at dais.unive.it>",
+               "Alan Del Piccolo <alan.delpiccolo at gmail.com>",
+               "Filippo Cavallin <840031 at stud.unive.it>",
+               "Eyasu Zemene Mequanint <eyasu201011 at gmail.com>"]
+
 __status__  =  "Development"
 
 
@@ -36,6 +45,8 @@ ir_buffer = [[deque(), deque()] for _ in range(4)]
 ir_medians = [[None, None] for _ in range(4)]
 # mean between the value of the line and the plane
 mid_value = (conf.line_value + conf.plane_value)/2
+# queue of the last samples taken by the color sensor
+last_hsvs = deque()
 
 # zmq context definitions
 context = zmq.Context()
@@ -45,22 +56,6 @@ State = Enum('State', ('explore_node_init explore_node explore_edge_init '
                        'escaping waiting_for_clearance moving_init '
                        'moving_before_marker moving idling '
                         'in_marker'))
-
-hsv_colors = {
-    0: (0.03,0.89,0.21),
-    1: (0.18,0.86,0.25),
-    3: (0.27,0.83,0.18),
-    4: (0.0,0.68,0.17),
-    5: (0.15,0.67,0.13), # border
-    6: (0.18,0.74,0.24),
-    8: (0.28,0.62,0.04),
-    11: (0.09,0.9,0.25),
-    12: (0.22,0.7,0.04),
-    15: (0.06,0.75,0.07),
-    16: (0.11,0.86,0.13),
-    17: (0.3,0.73,0.16),
-    18: (0.34,0.62,0.16)
-}
 
 # function definitions
 
@@ -84,29 +79,15 @@ def reset(signal = None, frame = None):
         sys.exit(1)
 
 def stop_motors():
-    motor_left.stop() #pulses_per_second_setpoint = 0
-    motor_right.stop() #pulses_per_second_setpoint = 0
+    motor_left.stop()
+    motor_right.stop()
 
 def start_motors():
     motor_left.run()
     motor_right.run()
 
-def median(data):
-    """Compute the median of the provided data."""
-
-    data = sorted(data)
-    n = len(data)
-    if n == 0:
-        raise Exception('No median for an empty list')
-    if n%2 == 1:
-        return data[n//2]
-    else:
-        i = n//2
-        return (data[i-1] + data[i])/2
-
 def wait_launch():
-    """Wait the game to be started (click play on the web interface) before
-    running."""
+    """Block until the game is started (click play on the web interface)."""
 
     url_to_check = "http://{}:{}/started".format(
         conf.web_server_ip, conf.web_server_port)
@@ -151,7 +132,12 @@ def get_hsv_colors():
     """Return the Hue, Saturation, Value triple of the sampled color assuming
     that the color sensor is in RAW-RGB mode."""
 
-    return rgb_to_hsv(*[col_sensor.value(i)/1022 for i in range(col_sensor.num_values())])
+    hsv = rgb_to_hsv(*[col_sensor.value(i)/1022 for i in range(col_sensor.num_values())])
+    if len(last_hsvs) >= conf.n_col_samples:
+        last_hsvs.popleft()
+    last_hsvs.append(hsv)
+
+    return hsv
 
 def avoid_collision():
     # query the ir sensor in SEEK mode to avoid collisions
@@ -168,15 +154,133 @@ def avoid_collision():
         # recompute the median
         ir_medians[robot_id][0] = median(ir_buffer[robot_id][0]) 
         ir_medians[robot_id][1] = median(ir_buffer[robot_id][1])
-        
+    
+        print(ir_medians[robot_id][1], end = ' ')    
         if ir_medians[robot_id][1] < 20:
             # [TODO] handle collisions
             pass
+    print()
 
-def is_in_border(saturation):
+def identify_color(hsv_color):
+    """Return the string id of the color closer to the provide HSV triple."""
+
+    # compute the distances among the acquired color and all known colors
+    distances = {k : color_distance(v, hsv_color) for k, v in conf.hsv_colors.iteritems()}
+    # return the closest one
+    return min(distances, key=distances.get)
+
+def in_border():
+    """Use the saturation mean to see if we fall on a border."""
+
+    saturation = mean([hsv[1] for hsv in last_hsvs])
     return saturation > conf.border_saturation_thr
 
+def choose_random_direction(edges):
+    direction = random.choice([i for i in range(4) if edges[i]])
+    return direction
+
+def rotate(direction = -1):
+    """Rotate within a node.
+
+    This function can be used to identify all the out edges starting from the
+    current node or, when a direction is provided, to perform a rotation until
+    the given direction is reached. Return the list of discovered edges in the
+    first case, else nothing."""
+
+    # if the direction is 0 we are already in the right place, there's nothing
+    # to do
+    if direction == 0:
+        return
+
+    # reset position
+    motor_left.position = 0
+    motor_right.position = 0
+
+    # start with a queue made only of white values
+    last_values = deque(conf.plane_value for _ in range(conf.n_col_samples))
+    # ... and obviously assume that the previous color is white
+    prev_color = color = 'white'
+
+    # list of edges to be returned in case we are in discovery mode
+    edges = [False for _ in range(4)]
+
+    # start rotating at half of the maximum allowed speed
+    motor_left.pulses_per_second_setpoint = conf.base_pulses//2
+    motor_right.pulses_per_second_setpoint = -conf.base_pulses//2
+
+    while True:
+        # leave if a 360 degrees rotation has been done
+        if motor_left.position > conf.full_rotation_degrees:
+            break
+
+        # update the queue of sampled color values
+        last_values.popleft()
+        last_values.append(get_hsv_colors()[2])
+
+        # update the current color according to the sampled value
+        mean = sum(last_values)/conf.n_col_samples
+        if mean < conf.line_value + 0.1:
+            color = 'black'
+        if mean > conf.plane_value - 0.1:
+            color = 'white'
+
+        # from white we just fallen on a black line
+        if prev_color != color and color == 'black':
+            cur_direction = int(round(motor_left.position / (conf.full_rotation_degrees//4)))
+            if cur_direction == direction:
+                # arrived at destination, it's time to leave ;)
+                break
+            elif cur_direction <= 3:
+                # keep trace of the new edge just found 
+                edges[cur_direction] = True
+            else:
+                # this is the 5th edge, we are back in the starting position on
+                # a node with 4 edges, we should stop here
+                break
+        prev_color = color
+
+    return edges if direction == -1 else None
+
+def cross_bordered_region():
+    """Cross a bordered colored region and return the color."""
+    
+    color = conf.Color.unknown
+    low_pulses = conf.base_pulses//3
+    # assume that we are on a border
+    local_state = 'border'
+    count = 0
+
+    while True:
+        # sample color
+        hsv_color = get_hsv_colors()
+
+        if local_state == 'border':
+            # slightly move forward so that we are exactly over the color
+            run_for(motor_left, power=low_pulses, degrees=30)
+            run_for(motor_right, power=low_pulses, degrees=30)
+            local_state = 'inside'
+            # start moving again
+            run_for(ever=True, power=low_pulses)
+            run_for(ever=True, power=low_pulses)
+        elif local_state == 'inside':
+            # time to pick up some samples to identify the color
+            count += 1
+            if count >= n_col_samples:
+                mean_hsv_color = mean(list(last_hsvs))
+                color = conf.Color[identify_color(hsv_color)]
+                local_state = 'sampled'
+        elif local_state == 'sampled':
+            # determine the end of the bordered area using the saturation
+            if not in_border():
+                return color
+        else:
+            raise Exception("Uh?")
+
 def flip():
+    # [TODO] refactor this function using full_rotation_degrees and pay
+    # attention to the usage of last_values, we already have a shared queue for
+    # colors. Moreover we should take into account the marker detection
+
     # reset position
     motor_left.position = 0
     motor_right.position = 0
@@ -196,65 +300,42 @@ def flip():
         else:
             raise Exception("Lost the track")
 
-def cross_bordered_region():
-    """Cross a bordered colored region like a marker or a node and return the
-    color."""
-    
-    color = 0
-    # assume that we are on a border
-    state = 'first_border'
+def mean(data):
+    """Compute the mean of the provided data."""
 
-    motor_left.pulses_per_second_setpoint = conf.base_pulses//2
-    motor_right.pulses_per_second_setpoint = conf.base_pulses//2
+    n = len(data)
+    try:
+        return [float(sum(l))/len(l) for l in zip(*data)]
+    except TypeError:
+        return sum(data)/n
 
-    while True:
-        # sample color
-        hsv_color = get_hsv_colors()
+def median(data):
+    """Compute the median of the provided data, used for ir smoothing."""
 
-        if state == 'inside':
-            # escape from the node using the saturation to determine the end of
-            # the node area
-            if not is_in_border(hsv_color[1]):
-                state = 'outside'
-            else:
-                continue
-
-        if state == 'outside':
-            sleep(0.1)
-            return color
-
-        if state == 'first_border':
-            actual_color = identify_color(hsv_color)
-            if actual_color == 5:
-                # still on the border, go on
-                continue
-            else:   
-                state = 'inside'
-                color = actual_color
+    data = sorted(data)
+    n = len(data)
+    if n == 0:
+        raise Exception('No median for an empty list')
+    if n%2 == 1:
+        return data[n//2]
+    else:
+        i = n//2
+        return (data[i-1] + data[i])/2
 
 
-def norm(a, b):
-    """Heuristic corrections of the two colors
-    - color near to red can be recognized with hue component near to 0 or 1
-      (due to cylindrical hsv color space)
-    - the height of the color sensor wrt the surface involves heavily on the
-      value component."""
+def color_distance(a, b):
+    """Compute the euclidean distance of 2 values.
+
+    This function also accounts for the heuristic corrections of the two
+    colors. Color near to red can be recognized with hue component near to 0 or
+    1 (due to cylindrical hsv color space). On the other hand, the height of
+    the color sensor wrt the surface involves heavily on the value component,
+    so we reduce the value by a constant multiplicative factor."""
 
     # red correction on hue component and value reduction
     a, b = [(0 if (x[0] >= 0.9) else x[0], x[1], x[2]*0.3) for x in a, b]
     # euclidean distance of all components (hue, saturation, value)
-    return sqrt( sum( (a - b)**2 for a, b in zip(a, b)) )
-
-def identify_color(hsv_color):
-    """Return the color that is closer to the provided triple."""
-
-    # compute the distances among the acquired color and all known colors
-    distances = {k : norm(v, hsv_color) for k, v in hsv_colors.iteritems()}
-    # return the closest one
-    return min(distances, key=distances.get)
-
-def from_marker_to_node():
-    pass
+    return sqrt(sum((a - b)**2 for a, b in zip(a, b)))
 
 def main():
     # register anti-panic handlers
@@ -297,7 +378,7 @@ def main():
         # protocol
         hue, saturation, value = get_hsv_colors()
         if state == State.moving:
-            if is_in_border(saturation):    
+            if in_border():    
                 if not marker_crossed:
                     # found a marker, we need to stop as soon as we find a
                     # matching color
@@ -305,12 +386,19 @@ def main():
                     stop_motors()
                 else:
                     color = cross_bordered_region()
+                    available_edges = rotate()
+                    stop_motors()
+                    sound.speak("Found edges on positions {}".format(', '.join(str(i) for i in range(4) if available_edges[i])), True)
+                    direction = choose_random_direction(available_edges)
+                    sound.speak("Moving to direction {}".format(direction), True)
+                    start_motors()
+                    rotate(direction)
                     stop_motors()
                     break
             else:
                 follow_line(value)
         elif state == State.in_marker:
-            sound.speak("I found a marker!", True)
+            #sound.speak("I found a marker!", True)
             start_motors()
             # go straight until the border is found (end of the marker reached)
             color = cross_bordered_region()
