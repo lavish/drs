@@ -35,6 +35,17 @@ robot_ips = ['10.42.0.{}'.format(3+i) for i in range(1, 5)]
 # tcp port used for the messaging protocol
 robot_port = 31337
 
-# all the possible colors assumed by the nodes in the graph
-Color = Enum('Color', 'red green cyan violet unknown')
-
+# all the possible colors assumed by the nodes in the graph, plus unknown
+Color = Enum('Color', 'darkgreen sadyellow sadbrown sadgreen yellow green darkred orange cyan magenta red unknown')
+hsv_colors = {
+    'darkgreen': (0.28, 0.62, 0.04),
+    'sadyellow': (0.18, 0.74, 0.24),
+    'sadbrown': (0.22, 0.7, 0.04),
+    'sadgreen': (0.3, 0.73, 0.16),
+    'yellow': (0.18, 0.86, 0.25),
+    'green': (0.27, 0.83, 0.18),
+    'darkred': (0.06, 0.75, 0.07),
+    'orange': (0.09, 0.9, 0.25),
+    'cyan': (0.34, 0.62, 0.16),
+    'magenta': (0.15, 0.67, 0.13),
+    'red': (0.03, 0.89, 0.21)}
