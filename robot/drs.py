@@ -19,6 +19,7 @@ from threading import Thread
 from enum import Enum
 from ev3dev import *
 from ev3dev_utils import *
+from graph import indexof, contains, indexof_many, get_min_dest_direction, filter_graph, add_unknown_edges_to_graph, explored
 
 # [TODO] are all the mails correct?
 __authors__ = ["Marco Squarcina <squarcina at dais.unive.it>", 
@@ -40,9 +41,10 @@ motor_right = large_motor(OUTPUT_B)
 # instances of sensors
 col_sensor = color_sensor()
 ir_sensor  = infrared_sensor()
-# other variables
-ir_buffer = [[deque(), deque()] for _ in range(4)]
-ir_medians = [[None, None] for _ in range(4)]
+## other variables
+## [MERGE] moved in update()
+#ir_buffer = [[deque(), deque()] for _ in range(4)]
+#ir_medians = [[None, None] for _ in range(4)]
 # mean between the value of the line and the plane
 mid_value = (conf.line_value + conf.plane_value)/2
 # queue of the last samples taken by the color sensor
@@ -157,6 +159,34 @@ def avoid_collision():
             # [TODO] handle collisions
             pass
 
+#[MERGE] first part of avoid_collision used to sample the ir values
+def update_ir_queue(ir_buffer):
+    # query the ir sensor in SEEK mode to avoid collisions
+    seek = [ir_sensor.value(i) for i in range(ir_sensor.num_values())]
+    for robot_id in range(4):
+        # remove the heads
+        if len(ir_buffer[robot_id][0]) >= conf.n_ir_samples:
+            ir_buffer[robot_id][0].popleft()
+            ir_buffer[robot_id][1].popleft()
+        # update the angle
+        ir_buffer[robot_id][0].append(seek[robot_id*2])
+        # update the distance
+        ir_buffer[robot_id][1].append(abs(seek[robot_id*2+1])) 
+
+#[MERGE] second part of avoid_collision used to check medians of ir_buffer to check for inbound robots
+def get_seen_robots(ir_buffer):
+    ir_medians = [[None, None] for _ in range(4)]
+    for robot_id in range(4):
+    # recompute the median
+        ir_medians[robot_id][0] = median(ir_buffer[robot_id][0]) 
+        ir_medians[robot_id][1] = median(ir_buffer[robot_id][1])
+    #[MERGE] added minimum distance in conf.py
+    seen_bots = graph.indexof_many(lambda d: d <= conf.collision_distance, ir_medians[0])
+    seen_bots = filter(lambda id: id != robot_id, seen_bots)
+    assert (len(seen_bots) < 2) "WTF? We are colliding with more than one bot??? Consider better invariants! IROS!"
+    return seen_bots
+
+
 def identify_color(hsv_color):
     """Return the string id of the color closer to the provide HSV triple."""
 
@@ -193,7 +223,7 @@ def rotate(direction = -1):
     motor_right.position = 0
 
     # start with a queue made only of white values
-    # [TODO] there's a global queue for handling this, we should use it
+    # [TODO] [MERGE: No global queue] there's a global queue for handling this, we should use it
     last_values = deque(conf.plane_value for _ in range(conf.n_col_samples))
     # ... and obviously assume that the previous color is white
     prev_color = color = 'white'
@@ -361,10 +391,28 @@ def get_orientation(old_orientation):
 
     return orientation
 
+# [TODO] implementation of this trivial function is left to the willing programmer (Ok, I'll help you! :>")
+def solve_collision(seen_robots, current_edge, travelled_distance):
+    raise Exception('solve_collision: Not implemented')
+
 # [TODO] remove source and source_orientation since it's not needed, the server
 # can deduce both using the position list
 def edge_update(destination_node, destination_orientation, edge_length):
     raise Exception('edge_update: Not implemented')
+
+# [TODO] check
+def reset_motor_position():
+    motor_left.position = 0
+    motor_right.position = 0
+
+#[MERGE] mean of the two motors. Right?
+def get_motor_position():
+    return (motor_left.position + motor_right.position) / 2
+
+#[MERGE] very easy... Consider inlining
+# used to find the outcoming orientation given the incoming one (e.g. N -> S; E-> W; S -> N; W -> E)
+def get_complementary_orientation(orientation):
+    return (orientation + 2) % 4
 
 def update():
     """OMG our huge state machine!!!!!!! x_X."""
@@ -372,7 +420,10 @@ def update():
     state = State.begin
     orientation = conf.robot_id
     current_node = Color.unknown
+    # current edge is a 3-tuple: starting node, starting orientation, destination node (or unknown)
+    current_edge = None
     graph = dict()
+    ir_buffer = [[deque(), deque()] for _ in range(4)]
 
     while True:
         # [TODO] insert here control operations (e.g. follow_line, sample
@@ -381,13 +432,16 @@ def update():
         # update the global color queue
         get_hsv_colors()
 
+        # it is a good idea to sample every tick the ir values even if it is not used in current state...
+        update_ir_queue(ir_buffer)
+
         # Begin before a marker, update the vertex infos.
         # NEXT_STATE: EXPLORE_EDGE_AFTER_MARKER.
         if state == State.begin:
             if on_border():
                 stop_motors()
                 color = cross_bordered_area(marker = True)
-                orientation = get_orientation()
+                orientation = get_orientation(orientation)
                 graph, _ = edge_update(color, orientation, -1)
                 state = State.explore_edge_after_marker
 
@@ -396,9 +450,9 @@ def update():
         # NEXT STATE: EXPLORE_NODE
         elif state == State.explore_node_init:
             cross_bordered_area(maker=False)
-            if not explored(color):
-                edges = rotate_in_node()
-                # [TODO] update local graph
+            if not explored(color): # function explored imported from graph.py
+                edges = rotate(-1) #[MERGE] I suppose
+                # [TODO] update local graph [MERGE: done later in explore_mode]
             state = State.explore_node
 
         # Find the direction to reach the closes unexplored edge. If the edge is adjacent to
@@ -424,8 +478,9 @@ def update():
         # NEXT_STATE: EXPLORE_EDGE_BEFORE_MARKER
 
         elif state == State.explore_edge_init:
-            outupdate() # with direction or lock on edges
+            outupdate() # [TODO] not merged... update position and direction of the bot, update the graph on the server. Maybe gets a new graph
             move_to_edge(current_edge[1])
+            orientation = current_edge[1] # [MERGE] forgot in previous version, always update orientation on turns
             state = State.explore_edge_before_marker
             #START!!!
 
@@ -438,11 +493,11 @@ def update():
         elif state == State.explore_edge_before_marker:
             seen_robots = get_seen_robots()
             if len(seen_robots) > 0:
-                stop()
+                stop_motors()
                 solve_collision(seen_robots, current_edge, -1)
                 state = State.waiting_for_clearance # corrosive husking candling pathos
             if on_border():
-                stop()
+                stop_motors()
                 cross_bordered_area()
                 reset_motor_position()
                 state = State.explore_edge
@@ -455,19 +510,19 @@ def update():
         elif state == State.explore_edge:
             seen_robots = get_seen_robots() #maybe replace returned list with None or element: more shortage close ordering
             if len(seen_robots) > 0:
-                stop()
+                stop_motors()
                 solve_collision(seen_robots, current_edge, get_motor_position())
                 state = State.escaping_init
             elif on_border():
-                stop()
+                stop_motors()
                 edge_length = get_motor_position()
-                marker_color = cross_bordered_area()
-                orientation = get_orientation()
-                is_locked = edge_update(current_edge[0], current_edge[2], marker_color, orientation, edge_length)
+                color = cross_bordered_area()
+                orientation = get_orientation(orientation)
+                graph, is_locked = edge_update(color, get_complementary_orientation(orientation), edge_length)
                 if is_locked:
                     state = State.escaping_init
                 else:
-                    current_node = marker_color
+                    current_node = color
                     state = State.explore_edge_after_marker
 
         # If we find a node we release the lock on the current edge and we start the node exploration.

@@ -10,6 +10,9 @@ robot_id = 0
 # number of ir samples to consider for median calculation
 n_ir_samples = 51
 
+# the ir value below which there is a collision
+collision_distance = 10
+
 # constant for the line following task: the lower the smoother
 proportional_const = 500
 
