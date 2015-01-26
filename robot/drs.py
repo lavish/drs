@@ -51,11 +51,11 @@ last_hsvs = deque()
 # zmq context definitions
 context = zmq.Context()
 # possible states
-State = Enum('State', ('explore_node_init explore_node explore_edge_init '
-                       'explore_edge_before_marker explore_edge escaping_init '
+State = Enum('State', ('begin explore_node_init explore_node '
+                       'explore_edge_init explore_edge_before_marker '
+                       'explore_edge explore_edge_after_marker escaping_init '
                        'escaping waiting_for_clearance moving_init '
-                       'moving_before_marker moving idling '
-                        'in_marker'))
+                       'moving_before_marker moving idling'))
 
 # function definitions
 
@@ -286,7 +286,7 @@ def cross_bordered_region(marker=True):
         else:
             raise Exception("Uh?")
 
-def flip():
+def turn_around():
     """Change direction to avoid collisions and tell if a marker is found."""
 
     marker_found = False
@@ -310,7 +310,7 @@ def flip():
                 # we are performing the rotation ovr the marker
                 break
         elif motor_left.position > conf.full_rotation_degrees//3 and value < mid_value:
-            # we performed the flip and we are back on track
+            # we performed the turn_around and we are back on track
             break
         elif motor_left.position < conf.full_rotation_degrees*0.75:
             # clockwise rotation
