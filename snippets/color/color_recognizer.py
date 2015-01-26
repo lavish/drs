@@ -111,7 +111,7 @@ def main():
         {"paletteId": 0, "fhsv":(0.03,0.89,0.21), "color:":"#FF0000", "label":"Red"},
 		{"paletteId": 1, "fhsv":(0.18,0.86,0.25), "color":"#FFFF00", "label":"Yellow"},
 		{"paletteId": 3, "fhsv":(0.27,0.83,0.18), "color":"#00FF12", "label":"Green"},
-		{"paletteId": 4, "fhsv":(0.15,0.67,0.13), "color":"#FF00BA", "label":"Magenta"},
+		{"paletteId": 4, "fhsv":(0.0,0.68,0.17), "color":"#FF00BA", "label":"Magenta"},
 		{"paletteId": 6, "fhsv":(0.18,0.74,0.24), "color":"#FDFF66", "label":"Sad Yellow"},
 		{"paletteId": 8, "fhsv":(0.28,0.62,0.04), "color":"#1E420D", "label":"Dark Green"},
 		{"paletteId": 11, "fhsv":(0.09,0.9,0.25), "color":"#FF9000", "label":"Orange"},
