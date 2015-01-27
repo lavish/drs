@@ -5,30 +5,30 @@
  *               -1    -> undiscovered edge
  				 >0    -> weight of a discovered edge
  */									 
-var adjMtx = [[00, -1, 00, -1, 00, 00, 00, 00, 00, 00, 00],
-			  [-1, 00, 00, -1, 00, 00, 00, 00, 00, 00, 00], 
-			  [00, 00, 00, 00, -1, 00, -1, -1, 00, 00, 00],
-			  [-1, -1, 00, 00, -1, 00, 00, -1, 00, 00, 00], 
-			  [00, 00, -1, -1, 00, 00, -1, 00, -1, 00, 00],
-			  [00, 00, 00, 00, 00, -1, 00, -1, -1, 00, 00], 
-			  [00, 00, -1, 00, -1, 00, 00, 00, -1, 00, 00],
-			  [00, 00, -1, -1, 00, -1, 00, 00, 00, -1, -1], 
-			  [00, 00, 00, 00, 00, -1, -1, 00, 00, 00, 00],
-			  [00, 00, 00, 00, 00, -1, 00, 00, -1, 00, -1],
-			  [00, 00, 00, 00, 00, 00, 00, -1, 00, -1, 00]];
+var adjMtx = [[00, -1, 00, 00, 00, 00, 00, 00, 00, -1, -1],
+              [-1, 00, -1, 00, 00, 00, 00, 00, 00, 00, 00], 
+			  [00, -1, 00, -1, 00, 00, 00, 00, 00, 00, 00],
+			  [00, 00, -1, 00, -1, 00, 00, -1, 00, 00, 00], 
+			  [00, 00, 00, -1, 00, -1, 00, -1, 00, 00, 00],
+			  [00, 00, 00, 00, -1, 00, -1, 00, 00, 00, 00], 
+			  [00, 00, 00, 00, 00, -1, 00, -1, -1, 00, -1],
+			  [00, 00, 00, -1, -1, 00, -1, 00, -1, 00, 00], 
+			  [00, 00, 00, 00, 00, 00, -1, -1, 00, -1, 00],
+			  [-1, 00, 00, 00, 00, 00, 00, 00, -1, 00, 00],
+			  [-1, 00, 00, 00, 00, 00, -1, 00, 00, 00, 00]];
 				
 // Node Attributes: 2D position, color and label
-var nodeAttrs = [{x:5, y:50, color:"#FF0000", label:"Red"},
-				 {x:8, y:9, color:"#FFFF00", label:"Yellow"},
-				 {x:60, y:60, color:"#00FF12", label:"Green"},
-				 {x:44, y:12, color:"#FF00BA", label:"Magenta"},
-				 {x:32, y:50, color:"#FDFF66", label:"Sad Yellow"},
-				 {x:70, y:80, color:"#1E420D", label:"Dark Green"},
-				 {x:22, y:80, color:"#FF9000", label:"Orange"},
-				 {x:100, y:60, color:"#51510B", label:"Sad Brown"},
-				 {x:10, y:100, color:"#A20000", label:"Dark Red"},
-				 {x:50, y:110, color:"#6EB75F", label:"Sad Green"},
-				 {x:75, y:100, color:"#46C993", label:"Cyan"}];
+var nodeAttrs = [{x:0, y:112, color:"#FF0000", label:"Red"},
+				 {x:0, y:338, color:"#FFFF00", label:"Yellow"},
+				 {x:226, y:450, color:"#00FF12", label:"Green"},
+				 {x:565, y:562, color:"#FF00BA", label:"Magenta"},
+				 {x:792, y:338, color:"#FDFF66", label:"Sad Yellow"},
+				 {x:792, y:-100, color:"#1E420D", label:"Dark Green"},
+				 {x:565, y:112, color:"#FF9000", label:"Orange"},
+				 {x:565, y:338, color:"#51510B", label:"Sad Brown"},
+				 {x:341, y:338, color:"#A20000", label:"Dark Red"},
+				 {x:231, y:112, color:"#6EB75F", label:"Sad Green"},
+				 {x:400, y:-100, color:"#46C993", label:"Cyan"}];
 // Discovered Node Colors
 var nodeColors = ["#ccc","#ccc","#ccc","#ccc","#ccc","#ccc","#ccc","#ccc","#ccc","#ccc","#ccc"];
 // Undiscovered and Discovered Edge Colors
@@ -43,7 +43,7 @@ var height = 600;
 // Render function for the nodes
 var render = function (r, n) {
 	/* the Raphael set is obligatory, containing all you want to display */
-	var ellipse = r.ellipse(0, 0, 30, 20).attr({ fill: nodeColors[n.id-1], stroke: nodeColors[n.id-1], "stroke-width": 2 });
+	var ellipse = r.ellipse(0, 0, 20, 20).attr({ fill: nodeColors[n.id-1], stroke: nodeColors[n.id-1], "stroke-width": 2 });
 	
 	/* set DOM node ID */
 	ellipse.node.id = n.label || n.id;
@@ -68,6 +68,10 @@ function drawGraph() {
     var g = new Graph();
 	
     g.edgeFactory.template.style.directed = false;
+	
+	// Shows immediatly the colors of all nodes 
+	//for (i = 0; i < nodeColors.length; i++)
+	//	nodeColors[i] = nodeAttrs[i]["color"];
 	
 	// Builds the graph structure according the current   
 	for (i = 0; i < adjMtx.length; i++) {	
@@ -123,7 +127,8 @@ function startViewer() {
 			success: function(data) {
 				$.each( data, function( fromeNodeId, toNodeIds ) {
 					for (i = 0; i < toNodeIds.length; i++) {
-						adjMtx[fromeNodeId][toNodeIds[i][0]] = toNodeIds[i][1];
+						// Assuming the indexs in the received graph are 1-indexed.
+						adjMtx[fromeNodeId-1][toNodeIds[i][0]-1] = toNodeIds[i][1];
 					}
 					
 				});
