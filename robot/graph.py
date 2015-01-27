@@ -148,11 +148,10 @@ def filter_graph(graph, bot_id, positions):
 
 def add_unknown_edges_to_graph(graph, starting_node, orientations):
     up_graph = deepcopy(graph)
-    edges = [(Color.unknown.value, -1) if exists else None for exists in orientations]
-    #if not graph.has_key[starting_node]:
+    edges = [[Color.unknown.value, -1] if (orientations[i] and up_graph[starting_node][i] != None) else up_graph[starting_node][i] for i in range(4)]
     up_graph[starting_node] = edges
-    return up_graph
 
+    return up_graph
 
 #def filter_graph_2(graph, bot_id, positions, orientation):
 #

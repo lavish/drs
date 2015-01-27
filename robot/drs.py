@@ -19,7 +19,8 @@ from threading import Thread
 from enum import Enum
 from ev3dev import *
 from ev3dev_utils import *
-from graph import indexof, contains, indexof_many, get_min_dest_direction, filter_graph, add_unknown_edges_to_graph, explored
+from grap import *
+#from graph import indexof, contains, indexof_many, get_min_dest_direction, filter_graph, add_unknown_edges_to_graph, explored
 
 # [TODO] are all the mails correct?
 __authors__ = ["Marco Squarcina <squarcina at dais.unive.it>", 
@@ -46,11 +47,9 @@ ir_sensor  = infrared_sensor()
 #ir_buffer = [[deque(), deque()] for _ in range(4)]
 #ir_medians = [[None, None] for _ in range(4)]
 # mean between the value of the line and the plane
-# [MERGE] move this to conf since it is constant
 mid_value = (conf.line_value + conf.plane_value)/2
 # queue of the last samples taken by the color sensor
-# [MERGE] moved in the update closure
-#last_hsvs = deque()
+last_hsvs = deque()
 
 # zmq context definitions
 context = zmq.Context()
@@ -130,7 +129,7 @@ def initialize():
     # set motors ready to run
     start_motors()
 
-def get_hsv_colors(last_hsvs):
+def get_hsv_colors():
     """Return the Hue, Saturation, Value triple of the sampled color assuming
     that the color sensor is in RAW-RGB mode."""
 
@@ -141,6 +140,7 @@ def get_hsv_colors(last_hsvs):
 
     return hsv
 
+'''
 def avoid_collision():
     # query the ir sensor in SEEK mode to avoid collisions
     seek = [ir_sensor.value(i) for i in range(ir_sensor.num_values())]
@@ -160,6 +160,7 @@ def avoid_collision():
         if ir_medians[robot_id][1] < 20:
             # [TODO] handle collisions
             pass
+'''
 
 #[MERGE] first part of avoid_collision used to sample the ir values
 def update_ir_queue(ir_buffer):
@@ -197,15 +198,17 @@ def identify_color(hsv_color):
     # return the closest one
     return min(distances, key=distances.get)
 
-def on_border(last_hsvs):
+def on_border():
     """Use the saturation mean to see if we fall on a border."""
 
     saturation = mean([hsv[1] for hsv in last_hsvs])
     return saturation > conf.border_saturation_thr
 
+'''
 def choose_random_direction(edges):
     direction = random.choice([i for i in range(4) if edges[i]])
     return direction
+'''
 
 def rotate(direction = -1):
     """Rotate within a node.
@@ -225,8 +228,8 @@ def rotate(direction = -1):
     motor_right.position = 0
 
     # start with a queue made only of white values
-    # [TODO] [MERGE: No global queue] there's a global queue for handling this, we should use it
-    last_values = deque(conf.plane_value for _ in range(conf.n_col_samples))
+    for _ in range(conf.n_col_samples):
+        last_hsvs.append((0, 0, conf.plane_value))
     # ... and obviously assume that the previous color is white
     prev_color = color = 'white'
 
@@ -243,11 +246,10 @@ def rotate(direction = -1):
             break
 
         # update the queue of sampled color values
-        last_values.popleft()
-        last_values.append(get_hsv_colors()[2])
+        get_hsv_colors()
 
         # update the current color according to the sampled value
-        mean_value = mean(last_values)
+        mean_value = mean([hsv[2] for hsv in last_hsvs])
         if mean_value < conf.line_value + 0.1:
             color = 'black'
         if mean_value > conf.plane_value - 0.1:
@@ -270,7 +272,7 @@ def rotate(direction = -1):
 
     return edges if direction == -1 else None
 
-def cross_bordered_area(last_hsvs, marker=True):
+def cross_bordered_area(marker=True):
     """Cross a bordered colored region and return the color."""
     
     color = conf.Color.unknown
@@ -283,17 +285,18 @@ def cross_bordered_area(last_hsvs, marker=True):
         local_state = 'sampled'
         run_for(motor_left, ever=True, power=low_pulses)
         run_for(motor_right, ever=True, power=low_pulses)
-    count = 0
 
+    count = 0
     while True:
         # sample color
-        hsv_color = get_hsv_colors()
+        get_hsv_colors()
 
         if local_state == 'border':
-            # slightly move forward so that we are exactly over the color
+            # halt!!!
             stop_motors()
-            sleep(1)
             start_motors()
+            # slightly move forward so that we are exactly over the color
+            # (run_for is not a blocking call, pay attention we need to sleep)
             run_for(motor_left, power=low_pulses, degrees=10)
             run_for(motor_right, power=low_pulses, degrees=10)
             sleep(0.5)
@@ -306,24 +309,21 @@ def cross_bordered_area(last_hsvs, marker=True):
             count += 1
             if count >= conf.n_col_samples:
                 mean_hsv_color = mean(list(last_hsvs))
-                color = conf.Color[identify_color(hsv_color)]
+                color = conf.Color[identify_color(mean_hsv_color)]
                 local_state = 'sampled'
                 logging.info(color)
         elif local_state == 'sampled':
             # determine the end of the bordered area using the saturation
-            if not on_border(last_hsvs):
+            if not on_border():
                 return color
         else:
             raise Exception("Uh?")
 
-# [TODO] if the rotation ends on a marker... go ahead a little bit...
-def turn_around(last_hsvs):
+def turn_around():
     """Change direction to avoid collisions and tell if a marker is found."""
 
     marker_found = False
-    # reset position
-    motor_left.position = 0
-    motor_right.position = 0
+    reset_motor_position()
     # start with a queue made only of white values
     for _ in range(conf.n_col_samples):
         last_hsvs.append((0, 0, conf.plane_value))
@@ -349,6 +349,10 @@ def turn_around(last_hsvs):
             motor_right.pulses_per_second_setpoint = -conf.slow_pulses
         else:
             raise Exception("Lost the track")
+
+    while on_border():
+        motor_left.pulses_per_second_setpoint = conf.slow_pulses
+        motor_right.pulses_per_second_setpoint = conf.slow_pulses
 
     return marker_found
 
@@ -400,24 +404,25 @@ def solve_collision(seen_robots, current_edge, travelled_distance):
 
 # [TODO] remove source and source_orientation since it's not needed, the server
 # can deduce both using the position list
+# [TODO] the server should also tell us if we need to explore the node (since
+# it's a new undiscovered node) or not
 # [MERGE] it gives to the bot even the list of all bots positions
 # [MERGE] the permission to enter in such node can be deduced using other_position 
 # returned values are: (the updated graph, the position of all bots, the permission to enter in destination)
-def edge_update(destination_node, destination_orientation, edge_length):
+def inmarker_update(destination_node, destination_orientation, edge_length):
     raise Exception('edge_update: Not implemented')
 
-# [TODO] check
 def reset_motor_position():
     motor_left.position = 0
     motor_right.position = 0
 
-#[MERGE] mean of the two motors. Right?
 def get_motor_position():
     return (motor_left.position + motor_right.position) / 2
 
-#[MERGE] very easy... Consider inlining
-# used to find the outcoming orientation given the incoming one (e.g. N -> S; E-> W; S -> N; W -> E)
 def get_complementary_orientation(orientation):
+    """Used to find the outcoming orientation given the incoming one (e.g. N ->
+    S; E-> W; S -> N; W -> E)."""
+
     return (orientation + 2) % 4
 
 def update():
@@ -426,32 +431,32 @@ def update():
     state = State.begin
     orientation = conf.robot_id
     current_node = Color.unknown
-    # current edge is a 3-tuple: starting node, starting orientation, destination node (or unknown)
+    # current edge is a 3-tuple: starting node, starting orientation,
+    # destination node (or unknown)
     current_edge = None
+    has_to_explore = False
     graph = dict()
-    # [MERGE] list containing the position of all bots (even itself)
-    other_positions = []
-
+    # list containing the last visited node of each robot (even itself)
+    bot_positions = []
+    # list of last sampled ir measurements
     ir_buffer = [[deque(), deque()] for _ in range(4)]
-    
-    # queue of the last samples taken by the color sensor
-    last_hsvs = deque()
-
-    # [MERGE] consider movin this to the top, just after the definition of the State enum...
-    moving_states = [
-        State.begin, State.explore_edge_before_marker, State.explore_edge, State.explore_edge_after_marker,
-        State.escaping, State.moving_before_marker, State.moving, State.moving_after_marker]
+    # tuple of the states where the bot should follow the line
+    moving_states = (State.begin, State.explore_edge_before_marker,
+                     State.explore_edge, State.explore_edge_after_marker,
+                     State.escaping, State.moving_before_marker, State.moving,
+                     State.moving_after_marker)
 
     while True:
-
-        # [MERGE] it is a good idea to sample every tick the ir values even if it is not used in current state...
+        # we sample every tick the ir values even if it is not used in current
+        # state
         update_ir_queue(ir_buffer)
 
         # update the global color queue every tick as before
         hue, saturation, value = get_hsv_colors()
 
-        # [MERGE] if we are in a moving state we follow the line. Correct since all other moving call are blocking.
-        if indexof(lambda s: s == state, moving_states)
+        # if we are in a moving state we follow the line, this is correct since
+        # all the high level moving calls are blocking
+        if state in moving_states:
             follow_line(value)
 
         # BEGIN OF THE STATE MACHINE UPDATE
@@ -459,21 +464,23 @@ def update():
         # Begin before a marker, update the vertex infos.
         # NEXT_STATE: EXPLORE_EDGE_AFTER_MARKER.
         if state == State.begin:
-            if on_border(last_hsvs):
+            if on_border():
                 stop_motors()
-                color = cross_bordered_area(last_hsvs, marker = True)
+                current_node = cross_bordered_area(marker=True)
                 orientation = get_orientation(orientation)
-                graph, other_positions, _ = edge_update(color, orientation, -1)
+                graph, bot_positions, has_to_explore, _ = \
+                    inmarker_update(current_node, get_complementary_orientation(orientation), -1)
                 state = State.explore_edge_after_marker
 
         # Receive the updated graph, identify the node, explore the node if it is unexplored
         # by rotating around and counting the edges under the color sensor.
         # NEXT STATE: EXPLORE_NODE
         elif state == State.explore_node_init:
-            cross_bordered_area(last_hsvs, maker=False)
-            if not explored(color): # function explored imported from graph.py
-                edges = rotate(-1) #[MERGE] I suppose
-                # [MERGE] local graph updated. Modifications commited to the server in outupdate contained in explore_edge_init
+            cross_bordered_area(maker=False)
+            if has_to_explore:
+                edges = rotate()
+                # [MERGE] local graph updated. Modifications commited to the
+                # server in outupdate contained in explore_edge_init
                 graph = add_unknown_edges_to_graph(graph, current_node, edges)
             state = State.explore_node
 
@@ -484,7 +491,7 @@ def update():
 
         
         elif state == State.explore_node:
-            filtered_graph = filter_graph(graph, robot_id, other_positions)
+            filtered_graph = filter_graph(graph, robot_id, bot_positions)
             directions = get_min_dest_direction(filtered_graph, current_node)
             if directions == None:
                 state = State.idling
@@ -519,7 +526,7 @@ def update():
                 stop_motors()
                 solve_collision(seen_robots, current_edge, -1)
                 state = State.waiting_for_clearance # corrosive husking candling pathos
-            if on_border(last_hsvs):
+            if on_border():
                 stop_motors() # [MERGE] omissible since we are exiting, but I dont remember if we need to do cross_bordered_area...
                 cross_bordered_area(last_hsvs, marker = True)
                 reset_motor_position()
@@ -536,12 +543,12 @@ def update():
                 stop_motors()
                 solve_collision(seen_robots, current_edge, get_motor_position())
                 state = State.escaping_init
-            elif on_border(last_hsvs):
+            elif on_border():
                 stop_motors()
                 edge_length = get_motor_position()
                 color = cross_bordered_area(last_hsvs, marker = True)
                 orientation = get_orientation(orientation)
-                graph, other_positions, is_locked = edge_update(color, get_complementary_orientation(orientation), edge_length)
+                graph, bot_positions, is_locked = inmarker_update(color, get_complementary_orientation(orientation), edge_length)
                 if is_locked:
                     state = State.escaping_init
                 else:
@@ -552,7 +559,7 @@ def update():
         # NEXT_STATE: EXPLORE_NODE_INIT
 
         elif state == State.explore_edge_after_marker:             
-            if on_border(last_hsvs):
+            if on_border():
                 stop_motors() # [MERGE] or just slow the motors since we found a node!
                 state = State.explore_node_init
 
@@ -574,7 +581,7 @@ def update():
         # NEXT_STATE: EXPLORE_EDGE_AFTER_MARKER
 
         elif state == State.escaping:
-            if on_border(last_hsvs):
+            if on_border():
                 stop_motors()
                 cross_bordered_area(last_hsvs, marker = True)
                 # we do not check locks because it's not released yet
@@ -593,7 +600,7 @@ def update():
         # NEXT_STATE: MOVING
 
         elif state == State.moving_before_marker:
-            if on_border(last_hsvs):
+            if on_border():
                 stop_motors() # [MERGE] omissible since we are exiting, but I dont remember if we need to do cross_bordered_area...
                 cross_bordered_area(last_hsvs, marker = True)
                 reset_motor_position()
@@ -604,14 +611,14 @@ def update():
         # NEXT_STATES: ESCAPING_INIT, EXPLORE_EDGE_AFTER_MARKER
 
         elif state == State.moving:
-            if on_border(last_hsvs):
+            if on_border():
                 stop_motors()
                 color = cross_bordered_area(last_hsvs, marker = True)
                 orientation = get_orientation(orientation)
                 # [MERGE] there is no need to call edge_update, but since we do not have inupdate any more, and we have to lock the node
                 # I'm using edge_update to notify to the server. The server can discard the information, or use the position to correct 
                 # weight
-                graph, other_positions, can_enter = edge_update(color, get_complementary_orientation(orientation), get_motor_position())
+                graph, bot_positions, can_enter = inmarker_update(color, get_complementary_orientation(orientation), get_motor_position())
                 if can_enter:
                     current_node = color
                     # [MERGE] We decided to add this state, but why? It's just duplicated code...
@@ -622,7 +629,7 @@ def update():
 
         # [MERGE] We decided to add this state, but why? It's just duplicated...
         elif state == State.moving_after_marker:
-            if on_border(last_hsvs):
+            if on_border():
                 stop_motors() # [MERGE] or just slow the motors since we found a node!
                 state = State.explore_node_init
                 
