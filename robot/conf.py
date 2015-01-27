@@ -24,8 +24,8 @@ border_saturation_thr = 0.6
 n_col_samples = 5
 
 # power of both motors when running straight
-base_pulses = 200
-slow_pulses = 100
+base_pulses = 150
+slow_pulses = 75
 # number of cicles needed to complete a full 360 rotation
 full_rotation_degrees = 905
 turn_rotation_difference = 270

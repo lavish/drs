@@ -2,17 +2,9 @@ from __future__ import division
 
 from enum import Enum
 from copy import deepcopy
-
+from conf import Color
 
 infinity = float('inf')
-
-# cardinal directions, plus I when inside a node
-Direction = Enum('Direction', 'n e s w i')
-# all the possible colors used for nodes, including 'unknown' when the color of
-# a node is not yet known
-Color = Enum('Color', 'red green cyan violet orange white unknown')
-
-
 
 def indexof(predicate, data):
     for i, x in enumerate(data):
@@ -123,6 +115,10 @@ def get_min_dest_direction(graph, source):
     nodes = get_available_unexplored(graph, source)
     dists, previous = shortest_path(graph, source, None)
     nodes = filter(lambda (node, edge): dists.has_key(node), nodes)
+    print("Nodes: {}".format(nodes))
+    print("Graph: {}".format(graph))
+    print("Dists: {}".format(dists))
+
     if nodes == None or nodes == []:
         return None
     weighted_nodes = [(dists[n], n) for (n, e) in nodes]
@@ -138,17 +134,30 @@ def get_min_dest_direction(graph, source):
     return [(tmp_dist, idx)]
     
 def filter_graph(graph, bot_id, positions):
+    print("Original graph: {}".format(graph))
+    print("bot_id: {}, positions: {}".format(bot_id, positions))
+
     other_positions = [p for i, p in enumerate(positions) if i != bot_id]
     filtered_graph = {}
+    '''
     for node, edges in graph.iteritems():
-        if indexof(lambda p: p == node, other_positions) == -1:
+        #if indexof(lambda p: p == node and node != Color.unknown.value, other_positions) == -1:
+        if node == Color.unknown.value or (not node in other_positions):
             filtered_edges = map(lambda edge: None if edge == None or indexof(lambda p: p == edge[0], other_positions) != -1 else edge, edges)
             filtered_graph[node] = filtered_edges
+    '''
+
+    for node, edges in graph.iteritems():
+        if node not in other_positions:
+            filtered_graph[node] = [None if (e == None or (e[0] in other_positions and e[0] != Color.unknown.value)) else e for e in graph[node]]
+
+    print("New graph: {}".format(filtered_graph))
+
     return filtered_graph
 
 def add_unknown_edges_to_graph(graph, starting_node, orientations):
     up_graph = deepcopy(graph)
-    edges = [[Color.unknown.value, -1] if (orientations[i] and up_graph[starting_node][i] != None) else up_graph[starting_node][i] for i in range(4)]
+    edges = [[Color.unknown.value, -1] if (orientations[i] and up_graph[starting_node][i] == None) else up_graph[starting_node][i] for i in range(4)]
     up_graph[starting_node] = edges
 
     return up_graph

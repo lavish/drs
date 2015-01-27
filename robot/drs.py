@@ -10,9 +10,11 @@ import conf
 import logging
 import atexit
 import random
-from time import sleep, time
+import json
+from time import sleep
 from math import sqrt
 from colorsys import rgb_to_hsv
+from urllib import urlencode
 from urllib2 import urlopen, URLError
 from collections import deque
 from threading import Thread
@@ -104,11 +106,14 @@ def wait_launch():
             break
         sleep(0.5)
 
+def json_translate(data):
+    return {int(k): v for k, v in data.iteritems()}
+
 def greet():
     """Say hello before starting the protocol."""
 
     # set the second parameter to False for non-blocking call
-    sound.speak("Hello, I am the robot number {}".format(conf.my_robot_id), True)
+    sound.speak("Hello, I am the robot number {}".format(conf.robot_id), True)
 
 def follow_line(value, pulses = conf.base_pulses):
     """Adjust the speed of the two motors to keep up with the line tracking."""
@@ -185,9 +190,11 @@ def get_seen_robots(ir_buffer):
         ir_medians[robot_id][0] = median(ir_buffer[robot_id][0]) 
         ir_medians[robot_id][1] = median(ir_buffer[robot_id][1])
     #[MERGE] added minimum distance in conf.py
-    seen_bots = graph.indexof_many(lambda d: d <= conf.collision_distance, ir_medians[0])
-    seen_bots = filter(lambda id: id != robot_id, seen_bots)
+    seen_bots = [i for i in range(4) if (ir_medians[i][1] <= conf.collision_distance and i != conf.robot_id)]
+    #seen_bots = indexof_many(lambda d: d <= conf.collision_distance, ir_medians[1])
+    #seen_bot = filter(lambda id: id != conf.robot_id, seen_bots)
     assert len(seen_bots) < 2, "WTF? We are colliding with more than one bot??? Consider better invariants! IROS!"
+
     return seen_bots
 
 
@@ -421,7 +428,7 @@ def solve_collision(seen_robots, current_edge, travelled_distance):
 # returned values are: (the updated graph, the position of all bots, the permission to enter in destination)
 def marker_update(destination_node, destination_orientation, edge_length, exploring):
     data = {'robot': conf.robot_id,
-            'destination_node': destination_node,
+            'destination_node': destination_node.value,
             'destination_orientation': destination_orientation,
             'edge_length': edge_length,
             'exploring': exploring}
@@ -431,40 +438,41 @@ def marker_update(destination_node, destination_orientation, edge_length, explor
 
     response_list = []
     sent = False
-    while not sent
+    while not sent:
         try:
-            f = urlopen(url_to_check, data=data)
+            f = urlopen(url_to_check, urlencode(data))
             response_list = json.loads(f.read())
             sent = True
         except URLError:
             logging.error('Unable to connect to the web server, proceeding')
             sleep(0.5)
-
+    response_list[0] = json_translate(response_list[0])
+    
     return response_list
 
 # return updated graph and bot_positions
 def outupdate(graph, current_node, direction):
-    edges = [1 if e != None else 0 for e in graph[current_node]]
+    edges = [1 if e != None else 0 for e in graph[current_node.value]]
     data = {'robot': conf.robot_id,
             'direction': direction,
             'n': edges[0],
             'e': edges[1],
             's': edges[2],
             'w': edges[3]}
-
     url_to_check = "http://{}:{}/outupdate".format(
         conf.web_server_ip, conf.web_server_port)
 
     response_list = []
     sent = False
-    while not sent
+    while not sent:
         try:
-            f = urlopen(url_to_check, data=data)
+            f = urlopen(url_to_check, urlencode(data))
             response_list = json.loads(f.read())
             sent = True
         except URLError:
             logging.error('Unable to connect to the web server, proceeding')
             sleep(0.5)
+    response_list[0] = json_translate(response_list[0])
 
     return response_list
 
@@ -503,6 +511,7 @@ def update():
                      State.moving_after_marker)
 
     while True:
+        logging.info(state)
         # we sample every tick the ir values even if it is not used in current
         # state
         update_ir_queue(ir_buffer)
@@ -524,6 +533,7 @@ def update():
                 stop_motors()
                 orientation = get_orientation(orientation)
                 current_node = cross_bordered_area(marker=True)
+                stop_motors()
                 response = marker_update(current_node, get_complementary_orientation(orientation), -1, True)
                 if len(response) == 0:
                     raise Exception('Empty list returned by marker_update')
@@ -534,7 +544,7 @@ def update():
         # by rotating around and counting the edges under the color sensor.
         # NEXT STATE: EXPLORE_NODE
         elif state == State.explore_node_init:
-            cross_bordered_area(maker=False)
+            cross_bordered_area(marker=False)
             if has_to_explore:
                 has_to_explore = False
                 edges = rotate(orientation)
@@ -567,7 +577,9 @@ def update():
         elif state == State.explore_edge_init:
             # [TODO] not merged... update position and direction of the bot,
             # update the graph on the server. Maybe gets a new graph
-            graph, bot_positions = outupdate(graph, current_node.value, current_edge[1])
+            stop_motors()
+            graph, bot_positions = outupdate(graph, current_node, current_edge[1])
+            start_motors()
             move_to_edge(orientation, current_edge[1])
             # always update orientation on turns
             orientation = current_edge[1]
@@ -604,9 +616,10 @@ def update():
             elif on_border():
                 # we reached the end of the edge
                 stop_motors()
-                edge_length = get_motor_position()
+                edge_length = int(get_motor_position())
                 orientation = get_orientation(orientation)
                 marker_color = cross_bordered_area(marker=True)
+                stop_motors()
                 response = marker_update(marker_color, get_complementary_orientation(orientation), edge_length, True)
                 if len(response) == 0:
                     raise Exception('Empty list returned by marker_update')
@@ -656,7 +669,9 @@ def update():
         # We update graph infos. We move towards the edge.
         # NEXT_STATE: MOVING_BEFORE_MARKER
         elif state == State.moving_init:
-            graph, bot_positions = outupdate(graph, current_node.value, current_edge[1])
+            stop_motors()
+            graph, bot_positions = outupdate(graph, current_node, current_edge[1])
+            start_motors()
             move_to_edge(orientation, current_edge[1])
             orientation = current_edge[1] 
             state = State.moving_before_marker
@@ -681,6 +696,7 @@ def update():
                 orientation = get_orientation(orientation)
                 marker_color = cross_bordered_area(marker = True)
                 assert marker_color == current_edge[2], 'Unexpected color marker {} found, expecting color {}'.format(marker_color, current_edge[2])
+                stop_motors()
                 # using edge_update to notify to the server. The server can
                 # discard the information, or use the position to correct
                 # weight [TODO] we'll decide later on
@@ -701,8 +717,8 @@ def update():
         # NEXT_STATE: EXPLORE_EDGE_BEFORE_MARKER
         elif state == State.waiting_for_clearance:
             stop_motors()
-            t = time()
-            while time() - t < 5:
+            t = time.time()
+            while time.time() - t < 5:
                 update_ir_queue(ir_buffer)
                 sleep(0.01)
             state = State.explore_edge_before_marker
@@ -712,8 +728,8 @@ def update():
         # NEXT_STATE: EXPLORE_NODE
         elif state == State.idling:
             stop_motors()
-            t = time()
-            while time() - t < 5:
+            t = time.time()
+            while time.time() - t < 5:
                 update_ir_queue(ir_buffer)
                 sleep(0.01)
             state = State.explore_node
@@ -731,6 +747,8 @@ def main():
     # configure how logging should be done
     logging.basicConfig(level=logging.DEBUG, format='[%(levelname)s] (%(threadName)-10s) %(message)s', )
 
+    greet()
+
     # parse command line options
     if len(sys.argv) > 1 and sys.argv[1] == '--wait':
         # wait the protocol to be started
@@ -742,7 +760,6 @@ def main():
     server.start()
     # [TODO] create the socket for sending messages
 
-    greet()
     initialize()
     update()
     reset()
