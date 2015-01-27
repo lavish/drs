@@ -187,7 +187,7 @@ def get_seen_robots(ir_buffer):
     #[MERGE] added minimum distance in conf.py
     seen_bots = graph.indexof_many(lambda d: d <= conf.collision_distance, ir_medians[0])
     seen_bots = filter(lambda id: id != robot_id, seen_bots)
-    assert (len(seen_bots) < 2) "WTF? We are colliding with more than one bot??? Consider better invariants! IROS!"
+    assert len(seen_bots) < 2, "WTF? We are colliding with more than one bot??? Consider better invariants! IROS!"
     return seen_bots
 
 
