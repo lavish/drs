@@ -24,19 +24,19 @@ border_saturation_thr = 0.6
 n_col_samples = 5
 
 # power of both motors when running straight
-base_pulses = 200
-slow_pulses = 100
+base_pulses = 150
+slow_pulses = 75
 # number of cicles needed to complete a full 360 rotation
 full_rotation_degrees = 905
 turn_rotation_difference = 270
 
 # web server ip/port
-web_server_ip = '10.42.0.1'
+web_server_ip = '192.168.10.1'
 web_server_port = 5000
 
 # possible ips for robots
-#robot_ips = ['192.168.1.10{}'.format(i) for i in range(1, 5)]
-robot_ips = ['10.42.0.{}'.format(3+i) for i in range(1, 5)]
+robot_ips = ['192.168.1.10{}'.format(i) for i in range(1, 5)]
+#robot_ips = ['10.42.0.{}'.format(3+i) for i in range(1, 5)]
 # tcp port used for the messaging protocol
 robot_port = 31337
 
