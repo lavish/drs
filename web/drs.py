@@ -114,11 +114,11 @@ def outupdate():
         # eventually update the information about the edges starting from the
         # current node
         try:
-            out_edges = [request.form.get(k, type=bool) for k in ['n','e','s','w']]
+            out_edges = [request.form.get(k, type=int) for k in ['n','e','s','w']]
             # update the reference to the out edge only if found by the robot and
             # not already defined within the graph structure
             for d in range(4):
-                if out_edges[d] and app.graph[current_position][d] == None:
+                if out_edges[d] == 1 and app.graph[current_position][d] == None:
                     app.graph[current_position][d] = [Color.unknown.value, -1]
         except KeyError:
             raise Exception('WTOMGFSCK')

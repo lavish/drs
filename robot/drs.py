@@ -212,9 +212,9 @@ def choose_random_direction(edges):
 '''
 
 def move_to_edge(current_orientation, new_orientation):
-    rotate(new_orientation - current_orientation % 4)
+    rotate(current_orientation, new_orientation - current_orientation % 4)
 
-def rotate(direction = -1):
+def rotate(starting_direction, direction = -1):
     """Rotate within a node.
 
     This function can be used to identify all the out edges starting from the
@@ -273,8 +273,9 @@ def rotate(direction = -1):
                 # a node with 4 edges, we should stop here
                 break
         prev_color = color
+    new_edges = [edges[(i+starting_direction) % 4] for i in range(4)]
 
-    return edges if direction == -1 else None
+    return new_edges if direction == -1 else None
 
 def cross_bordered_area(marker=True):
     """Cross a bordered colored region and return the color."""
@@ -443,7 +444,7 @@ def marker_update(destination_node, destination_orientation, edge_length, explor
 
 # return updated graph and bot_positions
 def outupdate(graph, current_node, direction):
-    edges = [e != None for e in graph[current_node]]
+    edges = [1 if e != None else 0 for e in graph[current_node]]
     data = {'robot': conf.robot_id,
             'direction': direction,
             'n': edges[0],
@@ -536,7 +537,7 @@ def update():
             cross_bordered_area(maker=False)
             if has_to_explore:
                 has_to_explore = False
-                edges = rotate()
+                edges = rotate(orientation)
                 # local graph updated. Modifications commited to the server in
                 # outupdate contained in explore_edge_init
                 graph = add_unknown_edges_to_graph(graph, current_node.value, edges)
