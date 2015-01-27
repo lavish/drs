@@ -411,8 +411,6 @@ def get_orientation(old_orientation):
 def solve_collision(seen_robots, current_edge, travelled_distance):
     raise Exception('solve_collision: Not implemented')
 
-# [TODO] remove source and source_orientation since it's not needed, the server
-# can deduce both using the position list
 # [TODO] the server should also tell us if we need to explore the node (since
 # it's a new undiscovered node) or not
 # [TODO] when dest_orient and edge_len are -1, we just discard these values and
@@ -420,8 +418,28 @@ def solve_collision(seen_robots, current_edge, travelled_distance):
 # [MERGE] it gives to the bot even the list of all bots positions
 # [MERGE] the permission to enter in such node can be deduced using other_position 
 # returned values are: (the updated graph, the position of all bots, the permission to enter in destination)
-def inmarker_update(destination_node, destination_orientation, edge_length):
-    raise Exception('edge_update: Not implemented')
+def marker_update(destination_node, destination_orientation, edge_length, exploring):
+    data = {'robot': conf.robot_id,
+            'destination_node': destination_node,
+            'destination_orientation': destination_orientation,
+            'edge_length': edge_length,
+            'exploring': exploring}
+
+    url_to_check = "http://{}:{}/marker_update".format(
+        conf.web_server_ip, conf.web_server_port)
+
+    response_list = []
+    sent = False
+    while not sent
+        try:
+            f = urlopen(url_to_check, data=data)
+            response_list = json.loads(f.read())
+            sent = True
+        except URLError:
+            logging.error('Unable to connect to the web server, proceeding')
+            sleep(0.5)
+
+    return response_list
 
 # [TODO] return updated graph and bot_positions
 def outupdate(graph, direction):
@@ -483,8 +501,10 @@ def update():
                 stop_motors()
                 orientation = get_orientation(orientation)
                 current_node = cross_bordered_area(marker=True)
-                graph, bot_positions, has_to_explore, _ = \
-                    inmarker_update(current_node, get_complementary_orientation(orientation), -1)
+                response = marker_update(current_node, get_complementary_orientation(orientation), -1, True)
+                if len(response) == 0:
+                    raise Exception('Empty list returned by marker_update')
+                graph, bot_positions, has_to_explore, _ = response
                 state = State.explore_edge_after_marker
 
         # Receive the updated graph, identify the node, explore the node if it is unexplored
@@ -564,7 +584,11 @@ def update():
                 edge_length = get_motor_position()
                 orientation = get_orientation(orientation)
                 marker_color = cross_bordered_area(marker=True)
-                graph, bot_positions, has_to_explore, can_enter = inmarker_update(marker_color, get_complementary_orientation(orientation), edge_length)
+                response = marker_update(marker_color, get_complementary_orientation(orientation), edge_length, True)
+                if len(response) == 0:
+                    raise Exception('Empty list returned by marker_update')
+                graph, bot_positions, has_to_explore, can_enter = response
+
                 if can_enter:
                     current_node = marker_color
                     state = State.explore_edge_after_marker
@@ -637,7 +661,11 @@ def update():
                 # using edge_update to notify to the server. The server can
                 # discard the information, or use the position to correct
                 # weight [TODO] we'll decide later on
-                graph, bot_positions, _, can_enter = inmarker_update(marker_color, -1, -1)
+                response = marker_update(marker_color, -1, -1, False)
+                if len(response) == 0:
+                    raise Exception('Empty list returned by marker_update')
+                graph, bot_positions, _, can_enter = response
+
                 if can_enter:
                     current_node = marker_color
                     state = State.explore_edge_after_marker
