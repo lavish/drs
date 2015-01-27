@@ -1,4 +1,5 @@
 import json
+import logging
 from threading import Lock
 from enum import Enum
 from flask import Flask, redirect, render_template, request, url_for
@@ -96,6 +97,7 @@ def marker_update():
                     # update the list with information about the edge we used to
                     # enter the current node
                     app.graph[destination_node][destination_orientation] = [old_position, edge_length]
+    print(app.graph)
 
     return json.dumps([app.graph, app.positions, has_to_explore, can_enter])
 
