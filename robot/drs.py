@@ -113,6 +113,7 @@ def greet():
 def follow_line(value, pulses = conf.base_pulses):
     """Adjust the speed of the two motors to keep up with the line tracking."""
 
+    start_motors()
     error = value - mid_value
     correction = int(conf.proportional_const * error)
     motor_left.pulses_per_second_setpoint = pulses + correction
@@ -209,6 +210,9 @@ def choose_random_direction(edges):
     direction = random.choice([i for i in range(4) if edges[i]])
     return direction
 '''
+
+def move_to_edge(current_orientation, new_orientation):
+    rotate(new_orientation - current_orientation % 4)
 
 def rotate(direction = -1):
     """Rotate within a node.
@@ -356,6 +360,11 @@ def turn_around():
 
     return marker_found
 
+def retire_from_marker():
+    run_for(motor_left, power=low_pulses, degrees=-100)
+    run_for(motor_right, power=low_pulses, degrees=-100)
+    sleep(2)
+
 def mean(data):
     """Compute the mean of the provided data."""
 
@@ -406,11 +415,17 @@ def solve_collision(seen_robots, current_edge, travelled_distance):
 # can deduce both using the position list
 # [TODO] the server should also tell us if we need to explore the node (since
 # it's a new undiscovered node) or not
+# [TODO] when dest_orient and edge_len are -1, we just discard these values and
+# check if the bot can enter the node
 # [MERGE] it gives to the bot even the list of all bots positions
 # [MERGE] the permission to enter in such node can be deduced using other_position 
 # returned values are: (the updated graph, the position of all bots, the permission to enter in destination)
 def inmarker_update(destination_node, destination_orientation, edge_length):
     raise Exception('edge_update: Not implemented')
+
+# [TODO] return updated graph and bot_positions
+def outupdate(graph, direction):
+    raise Exception('outupdate: Not implemented')
 
 def reset_motor_position():
     motor_left.position = 0
@@ -466,8 +481,8 @@ def update():
         if state == State.begin:
             if on_border():
                 stop_motors()
-                current_node = cross_bordered_area(marker=True)
                 orientation = get_orientation(orientation)
+                current_node = cross_bordered_area(marker=True)
                 graph, bot_positions, has_to_explore, _ = \
                     inmarker_update(current_node, get_complementary_orientation(orientation), -1)
                 state = State.explore_edge_after_marker
@@ -478,98 +493,100 @@ def update():
         elif state == State.explore_node_init:
             cross_bordered_area(maker=False)
             if has_to_explore:
+                has_to_explore = False
                 edges = rotate()
-                # [MERGE] local graph updated. Modifications commited to the
-                # server in outupdate contained in explore_edge_init
-                graph = add_unknown_edges_to_graph(graph, current_node, edges)
+                # local graph updated. Modifications commited to the server in
+                # outupdate contained in explore_edge_init
+                graph = add_unknown_edges_to_graph(graph, current_node.value, edges)
             state = State.explore_node
 
         # Find the direction to reach the closes unexplored edge. If the edge is adjacent to
         # the current node then start exploring it, otherwise move to the node in the minimum path.
         # If there is no unexplored reachable edge switch to idle mode.
         # NEXT STATES: IDLING, MOVING_INIT, EXPLORE_EDGE_INIT
-
-        
         elif state == State.explore_node:
-            filtered_graph = filter_graph(graph, robot_id, bot_positions)
-            directions = get_min_dest_direction(filtered_graph, current_node)
+            filtered_graph = filter_graph(graph, conf.robot_id, bot_positions)
+            directions = get_min_dest_direction(filtered_graph, current_node.value)
             if directions == None:
                 state = State.idling
             else:
-                dest = directions[randint(0, len(directions) - 1)]
-                current_edge = (current_node, dest[1], dest[0])
+                dest = random.choice(directions)
+                current_edge = (current_node.value, dest[1], dest[0])
                 if dest[0] == Color.unknown.value:
                     state = State.explore_edge_init
                 else:
                     state = State.moving_init
 
-        # Update the graph infos on the server when exiting the node. Rotate and align with the edge to explore.
+        # Update the graph infos on the server when exiting the node. Rotate
+        # and align with the edge to explore.
         # Start moving on the edge.
         # NEXT_STATE: EXPLORE_EDGE_BEFORE_MARKER
-
         elif state == State.explore_edge_init:
-            outupdate() # [TODO] not merged... update position and direction of the bot, update the graph on the server. Maybe gets a new graph
-            move_to_edge(current_edge[1])
-            orientation = current_edge[1] # [MERGE] forgot in previous version, always update orientation on turns
+            # [TODO] not merged... update position and direction of the bot,
+            # update the graph on the server. Maybe gets a new graph
+            graph, bot_positions = outupdate(graph, current_edge[1])
+            move_to_edge(orientation, current_edge[1])
+            # always update orientation on turns
+            orientation = current_edge[1]
             state = State.explore_edge_before_marker
             #START!!!
 
-        # Try to spot a robot. If one exists solve the collision (in this case the robot always has the right of way) and
-        # start waiting until the other robot has turned around. If the position is on a marker and no robot has been spotted
-        # move past the marker.
+        # Try to spot a robot. If one exists solve the collision (in this case
+        # the robot always has the right of way) and start waiting until the
+        # other robot has turned around. If the position is on a marker and no
+        # robot has been spotted move past the marker.
         # NEXT STATE: EXPLORE_EDGE
-
-
         elif state == State.explore_edge_before_marker:
-            seen_robots = get_seen_robots()
+            seen_robots = get_seen_robots(ir_buffer)
             if len(seen_robots) > 0:
                 stop_motors()
                 solve_collision(seen_robots, current_edge, -1)
                 state = State.waiting_for_clearance # corrosive husking candling pathos
             if on_border():
-                stop_motors() # [MERGE] omissible since we are exiting, but I dont remember if we need to do cross_bordered_area...
-                cross_bordered_area(last_hsvs, marker = True)
+                cross_bordered_area(marker=False)
                 reset_motor_position()
                 state = State.explore_edge
 
-        # Try to spot a robot. If one exists solve the collision and starts escaping. If no collision exists and it reachers a marker
-        # see if the destination is locked. If it is locked update the edge infos and escape. Otherwise lock the destination and unlock 
-        # the starting node.
+        # Try to spot a robot. If one exists solve the collision and starts
+        # escaping. If no collision exists and it reachers a marker see if the
+        # destination is locked. If it is locked update the edge infos and
+        # escape. Otherwise lock the destination and unlock the starting node.
         # NEXT_STATES: ESCAPING_INIT, EXPLORE_EDGE_AFTER_MARKER
-
         elif state == State.explore_edge:
-            seen_robots = get_seen_robots() #maybe replace returned list with None or element: more shortage close ordering
+            seen_robots = get_seen_robots(ir_buffer)
             if len(seen_robots) > 0:
                 stop_motors()
                 solve_collision(seen_robots, current_edge, get_motor_position())
                 state = State.escaping_init
             elif on_border():
+                # we reached the end of the edge
                 stop_motors()
                 edge_length = get_motor_position()
-                color = cross_bordered_area(last_hsvs, marker = True)
                 orientation = get_orientation(orientation)
-                graph, bot_positions, is_locked = inmarker_update(color, get_complementary_orientation(orientation), edge_length)
-                if is_locked:
-                    state = State.escaping_init
-                else:
-                    current_node = color
+                marker_color = cross_bordered_area(marker=True)
+                graph, bot_positions, has_to_explore, can_enter = inmarker_update(marker_color, get_complementary_orientation(orientation), edge_length)
+                if can_enter:
+                    current_node = marker_color
                     state = State.explore_edge_after_marker
+                else:
+                    retire_from_marker()
+                    state = State.escaping_init
 
-        # If we find a node we release the lock on the current edge and we start the node exploration.
+        # If we find a node we release the lock on the current edge and we
+        # start the node exploration.
         # NEXT_STATE: EXPLORE_NODE_INIT
-
         elif state == State.explore_edge_after_marker:             
             if on_border():
-                stop_motors() # [MERGE] or just slow the motors since we found a node!
                 state = State.explore_node_init
 
-        # Start turning. If there is a waiting mate we notify that the way is clear.
-        # If we find a marker while turning we simply go back and we run the standard escape code.
+        # Start turning. If there is a waiting mate we notify that the way is
+        # clear. If we find a marker while turning we simply go back and we run
+        # the standard escape code.
         # NEXT_STATES: EXPLORE_EDGE_AFTER_MARKER, ESCAPING
-
         elif state == State.escaping_init:
-            found_marker = turn_around(last_hsvs) # check marker
-            orientation = get_complementary_orientation(current_edge[1]) # [MERGE] forgot in previous version, always update orientation on turns
+            found_marker = turn_around()
+            # always update orientation on turns
+            orientation = get_complementary_orientation(current_edge[1]) 
             #if waiting_mate != None:
             #    notify_clearance(waiting_mate) # to be removed if waiting_for_clearance only sleeps for some seconds
             if found_marker:
@@ -577,80 +594,77 @@ def update():
             else:
                 state = State.escaping
 
-        # We wait until we are on a marker. We identify it and we change state to notify we are past the marker.
+        # We wait until we are on a marker. We identify it and we change state
+        # to notify we are past the marker.
         # NEXT_STATE: EXPLORE_EDGE_AFTER_MARKER
-
         elif state == State.escaping:
             if on_border():
                 stop_motors()
-                cross_bordered_area(last_hsvs, marker = True)
+                # we have just visited this marker, so even if we are on a
+                # marker we want to get past of it
+                cross_bordered_area(marker=False)
                 # we do not check locks because it's not released yet
                 state = State.explore_edge_after_marker
 
         # We update graph infos. We move towards the edge.
         # NEXT_STATE: MOVING_BEFORE_MARKER
-
         elif state == State.moving_init:
-            outupdate() # [TODO] not merged... update position and direction of the bot, update the graph on the server. Maybe gets a new graph
-            move_to_edge(current_edge[1])
-            orientation = current_edge[1] # [MERGE] forgot in previous version, always update orientation on turns
+            graph, bot_positions = outupdate(graph, current_edge[1])
+            move_to_edge(orientation, current_edge[1])
+            orientation = current_edge[1] 
             state = State.moving_before_marker
 
         # We wait until we are on the marker. We start moving.
         # NEXT_STATE: MOVING
-
         elif state == State.moving_before_marker:
             if on_border():
-                stop_motors() # [MERGE] omissible since we are exiting, but I dont remember if we need to do cross_bordered_area...
-                cross_bordered_area(last_hsvs, marker = True)
+                # we have just visited this marker, so even if we are on a
+                # marker we want to get past of it
+                cross_bordered_area(marker=False)
                 reset_motor_position()
                 state = State.moving
 
-        # If we are on a node we start exploring it. If we are on a marker and it is lock, we escape. Otherwise we release lock
-        # just as for the edge exploration.
+        # If we are on a node we start exploring it. If we are on a marker and
+        # it is lock, we escape. Otherwise we release lock just as for the edge
+        # exploration.
         # NEXT_STATES: ESCAPING_INIT, EXPLORE_EDGE_AFTER_MARKER
-
         elif state == State.moving:
             if on_border():
                 stop_motors()
-                color = cross_bordered_area(last_hsvs, marker = True)
                 orientation = get_orientation(orientation)
-                # [MERGE] there is no need to call edge_update, but since we do not have inupdate any more, and we have to lock the node
-                # I'm using edge_update to notify to the server. The server can discard the information, or use the position to correct 
-                # weight
-                graph, bot_positions, can_enter = inmarker_update(color, get_complementary_orientation(orientation), get_motor_position())
+                marker_color = cross_bordered_area(marker = True)
+                assert marker_color == current_edge[2], 'Unexpected color marker {} found, expecting color {}'.format(marker_color, current_edge[2])
+                # using edge_update to notify to the server. The server can
+                # discard the information, or use the position to correct
+                # weight [TODO] we'll decide later on
+                graph, bot_positions, _, can_enter = inmarker_update(marker_color, -1, -1)
                 if can_enter:
-                    current_node = color
-                    # [MERGE] We decided to add this state, but why? It's just duplicated code...
+                    current_node = marker_color
                     state = State.explore_edge_after_marker
                 else:
+                    retire_from_marker()
                     state = State.escaping_init
 
-
-        # [MERGE] We decided to add this state, but why? It's just duplicated...
-        elif state == State.moving_after_marker:
-            if on_border():
-                stop_motors() # [MERGE] or just slow the motors since we found a node!
-                state = State.explore_node_init
-                
-        # We sleep for 5 seconds (measured rotation time) and we start the exploration
+        # We sleep for 5 seconds (measured rotation time) and we start the
+        # exploration
         # NEXT_STATE: EXPLORE_EDGE_BEFORE_MARKER
-
         elif state == State.waiting_for_clearance:
-            #response = check_messages()
-            #if response:
-            #    state = State.explore_edge_before_marker
-            #else:
-            # motors are already stopped
-            sleep(5) # the time needed for rotation of the mate
+            stop_motors()
+            t = time()
+            while time() - t < 5:
+                update_ir_queue(ir_buffer)
+                sleep(0.01)
             state = State.explore_edge_before_marker
 
-        # We wait for 5 seconds and then we poll the node to see if we can reach an unexplored edge.
+        # We wait for 5 seconds and then we poll the node to see if we can
+        # reach an unexplored edge.
         # NEXT_STATE: EXPLORE_NODE
-
         elif state == State.idling:
-            # motors are already stopped
-            sleep(5)
+            stop_motors()
+            t = time()
+            while time() - t < 5:
+                update_ir_queue(ir_buffer)
+                sleep(0.01)
             state = State.explore_node
 
         # Enrico did something wrong because my code is always bug free.
@@ -681,52 +695,9 @@ def main():
     initialize()
     update()
     reset()
+
     # [TODO] join the MessageServer thread
     sys.exit(0)
-
-    '''
-    while True:
-        # query the ir sensor in SEEK mode to avoid collisions
-        avoid_collision()
-
-        # read the HSV triple from the color sensor and act accordingly to the
-        # protocol
-        hue, saturation, value = get_hsv_colors()
-        if state == State.moving:
-            if on_border():
-                if not marker_crossed:
-                    # found a marker, we need to stop as soon as we find a
-                    # matching color
-                    state = State.in_marker
-                    stop_motors()
-                else:
-                    color = cross_bordered_area(marker=False)
-                    available_edges = rotate()
-                    stop_motors()
-                    sound.speak("Found edges on positions {}".format(', '.join(str(i) for i in range(4) if available_edges[i])), True)
-                    direction = choose_random_direction(available_edges)
-                    sound.speak("Moving to direction {}".format(direction), True)
-                    start_motors()
-                    rotate(direction)
-                    stop_motors()
-                    break
-            else:
-                follow_line(value)
-        elif state == State.in_marker:
-            #sound.speak("I found a marker!", True)
-            start_motors()
-            # go straight until the border is found (end of the marker reached)
-            color = cross_bordered_area()
-            stop_motors()
-            marker_crossed = True
-            logging.info("Found color {}".format(color))
-            sound.speak("Found color {}".format(color), True)
-            state = State.moving
-            start_motors()
-        else:
-            logging.critical("WTF?")
-            break
-    '''
 
 if __name__ == '__main__':
     main()
