@@ -101,30 +101,29 @@ def marker_update():
 
 @app.route('/outupdate', methods = ['POST'])
 def outupdate():
-    """When a bot leaves a node, a request to this resource is made in order to
-    update the shared list of directions and eventually increasing the
-    knowledge about the graph by sending the discovered edges starting from the
+    """When a bot starts orientating, a request to this resource is made in order to
+    update the shared list of directions and eventually increasing the knowledge about the graph by sending the discovered edges starting from the
     current node."""
 
-    robot = request.form.get('robot', type=int)
-    node = Color[request.form.get('node')].value
-    direction_out = Direction[request.form.get('dirout')].value
-    app.directions[robot] = direction_out
+    with lock:
+        robot = request.form.get('robot', type=int)
+        direction = request.form.get('direction', type=int)
+        app.directions[robot] = direction
+        current_position = app.positions[robot]
 
-    # eventually update the information about the edges starting from the
-    # current node
-    try:
-        out_edges = [request.form.get(k) for k in Direction.__members__ if k != 'i']
-        # update the reference to the out edge only if found by the robot and
-        # not already defined within the graph structure
-        for d in range(4):
-            if out_edges[d] == '1' and app.graph[node][d] == None:
-                app.graph[node][i] = ['unknown', -1]
-    except KeyError:
-        pass
+        # eventually update the information about the edges starting from the
+        # current node
+        try:
+            out_edges = [request.form.get(k, type=bool) for k in ['n','e','s','w']]
+            # update the reference to the out edge only if found by the robot and
+            # not already defined within the graph structure
+            for d in range(4):
+                if out_edges[d] and app.graph[current_position][d] == None:
+                    app.graph[current_position][d] = [Color.unknown.value, -1]
+        except KeyError:
+            raise Exception('WTOMGFSCK')
 
-    # return 1 just to confirm that the operation succeeded
-    return '1'
+        return json.dumps([app.graph, app.positions])
 
 @app.route('/start')
 def start():

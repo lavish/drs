@@ -19,7 +19,7 @@ from threading import Thread
 from enum import Enum
 from ev3dev import *
 from ev3dev_utils import *
-from grap import *
+from graph import *
 #from graph import indexof, contains, indexof_many, get_min_dest_direction, filter_graph, add_unknown_edges_to_graph, explored
 
 # [TODO] are all the mails correct?
@@ -441,9 +441,31 @@ def marker_update(destination_node, destination_orientation, edge_length, explor
 
     return response_list
 
-# [TODO] return updated graph and bot_positions
-def outupdate(graph, direction):
-    raise Exception('outupdate: Not implemented')
+# return updated graph and bot_positions
+def outupdate(graph, current_node, direction):
+    edges = [e != None for e in graph[current_node]]
+    data = {'robot': conf.robot_id,
+            'direction': direction,
+            'n': edges[0],
+            'e': edges[1],
+            's': edges[2],
+            'w': edges[3]}
+
+    url_to_check = "http://{}:{}/outupdate".format(
+        conf.web_server_ip, conf.web_server_port)
+
+    response_list = []
+    sent = False
+    while not sent
+        try:
+            f = urlopen(url_to_check, data=data)
+            response_list = json.loads(f.read())
+            sent = True
+        except URLError:
+            logging.error('Unable to connect to the web server, proceeding')
+            sleep(0.5)
+
+    return response_list
 
 def reset_motor_position():
     motor_left.position = 0
@@ -544,7 +566,7 @@ def update():
         elif state == State.explore_edge_init:
             # [TODO] not merged... update position and direction of the bot,
             # update the graph on the server. Maybe gets a new graph
-            graph, bot_positions = outupdate(graph, current_edge[1])
+            graph, bot_positions = outupdate(graph, current_node.value, current_edge[1])
             move_to_edge(orientation, current_edge[1])
             # always update orientation on turns
             orientation = current_edge[1]
@@ -633,7 +655,7 @@ def update():
         # We update graph infos. We move towards the edge.
         # NEXT_STATE: MOVING_BEFORE_MARKER
         elif state == State.moving_init:
-            graph, bot_positions = outupdate(graph, current_edge[1])
+            graph, bot_positions = outupdate(graph, current_node.value, current_edge[1])
             move_to_edge(orientation, current_edge[1])
             orientation = current_edge[1] 
             state = State.moving_before_marker
