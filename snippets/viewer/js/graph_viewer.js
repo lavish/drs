@@ -127,8 +127,10 @@ function startViewer() {
             success: function(data) {
                 $.each( data, function( fromeNodeId, toNodeIds ) {
                     for (i = 0; i < toNodeIds.length; i++) {
-                        // Assuming the indexs in the received graph are 1-indexed.
-                        adjMtx[fromeNodeId-1][toNodeIds[i][0]-1] = toNodeIds[i][1];
+						if (toNodeIds[i] != null) {
+                        	// Assuming the indexs in the received graph are 1-indexed.
+                        	adjMtx[parseInt(fromeNodeId)-1][parseInt(toNodeIds[i][0])-1] = toNodeIds[i][1];
+						}
                     }
                     
                 });
