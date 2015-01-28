@@ -14,6 +14,7 @@ def run_for(motor, power=75, ever=None, seconds=None, degrees=None):
     be 900 and 1200 for tacho and minitacho motors accordingly.
     """
 
+    #motor.regulation_mode = ev3dev.motor.mode_on
     if motor.regulation_mode == ev3dev.motor.mode_on:
         motor.pulses_per_second_setpoint = int(power)
     else:

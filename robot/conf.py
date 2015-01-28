@@ -20,15 +20,15 @@ proportional_const = 500
 # plane_value have been multiplied by a factor of 1000)
 line_value = 0.042
 plane_value = 0.390
-border_saturation_thr = 0.6
-n_col_samples = 5
+border_saturation_thr = 0.62
+n_col_samples = 3
 
 # power of both motors when running straight
-base_pulses = 150
-slow_pulses = 75
+base_pulses = 130
+slow_pulses = 50
 # number of cicles needed to complete a full 360 rotation
-full_rotation_degrees = 905
-turn_rotation_difference = 270
+full_rotation_degrees = 850
+turn_rotation_difference = full_rotation_degrees // 2
 
 # web server ip/port
 web_server_ip = '192.168.10.1'
@@ -52,5 +52,5 @@ hsv_colors = {
     'darkred': (0.06, 0.75, 0.07),
     'orange': (0.09, 0.9, 0.25),
     'cyan': (0.34, 0.62, 0.16),
-    'magenta': (0.0, 0.68, 0.17),
+    'magenta': (0.0, 0.75, 0.23483365949119372),
     'red': (0.03, 0.89, 0.21)}

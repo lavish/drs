@@ -219,7 +219,7 @@ def choose_random_direction(edges):
 '''
 
 def move_to_edge(current_orientation, new_orientation):
-    rotate(current_orientation, new_orientation - current_orientation % 4)
+    rotate(current_orientation, (new_orientation - current_orientation) % 4)
 
 def rotate(starting_direction, direction = -1):
     """Rotate within a node.
@@ -229,27 +229,30 @@ def rotate(starting_direction, direction = -1):
     the given direction is reached. Return the list of discovered edges in the
     first case, else nothing."""
 
+    print("Rotate args: starting_direction: {}, direction: {}".format(starting_direction, direction))
+    
     # if the direction is 0 we are already in the right place, there's nothing
     # to do
     if direction == 0:
         return
 
     # reset position
-    motor_left.position = 0
-    motor_right.position = 0
+    reset_motor_position()
 
     # start with a queue made only of white values
     for _ in range(conf.n_col_samples):
+        last_hsvs.popleft()
         last_hsvs.append((0, 0, conf.plane_value))
     # ... and obviously assume that the previous color is white
-    prev_color = color = 'white'
+    prev_color = 'white'
+    color = 'white'
 
     # list of edges to be returned in case we are in discovery mode
     edges = [False for _ in range(4)]
 
     # start rotating at half of the maximum allowed speed
-    motor_left.pulses_per_second_setpoint = conf.base_pulses//2
-    motor_right.pulses_per_second_setpoint = -conf.base_pulses//2
+    motor_left.pulses_per_second_setpoint = conf.slow_pulses
+    motor_right.pulses_per_second_setpoint = -conf.slow_pulses
 
     while True:
         # leave if a 360 degrees rotation has been done
@@ -260,14 +263,16 @@ def rotate(starting_direction, direction = -1):
         get_hsv_colors()
 
         # update the current color according to the sampled value
-        mean_value = mean([hsv[2] for hsv in last_hsvs])
-        if mean_value < conf.line_value + 0.1:
+        mean_value = median([hsv[2] for hsv in last_hsvs])
+        if mean_value < conf.line_value + 0.05:
             color = 'black'
-        if mean_value > conf.plane_value - 0.1:
+        if mean_value > conf.plane_value - 0.05:
             color = 'white'
 
         # from white we just fallen on a black line
         if prev_color != color and color == 'black':
+            #cur_direction = get_orientation(0)
+            #print("cur_direction: {}".format(cur_direction))
             cur_direction = int(round(motor_left.position / (conf.full_rotation_degrees//4)))
             if cur_direction == direction:
                 # arrived at destination, it's time to leave ;)
@@ -275,12 +280,16 @@ def rotate(starting_direction, direction = -1):
             elif cur_direction <= 3:
                 # keep trace of the new edge just found 
                 edges[cur_direction] = True
+                logging.info("FOUND EDGE")
+            elif motor_left.position > conf.full_rotation_degrees:
+                break 
             else:
                 # this is the 5th edge, we are back in the starting position on
                 # a node with 4 edges, we should stop here
                 break
         prev_color = color
-    new_edges = [edges[(i+starting_direction) % 4] for i in range(4)]
+    new_edges = [edges[(i-starting_direction) % 4] for i in range(4)]
+    print("starting_direction: {}, edges: {}, new_edges: {}".format(starting_direction, edges, new_edges))
 
     return new_edges if direction == -1 else None
 
@@ -288,15 +297,14 @@ def cross_bordered_area(marker=True):
     """Cross a bordered colored region and return the color."""
     
     color = conf.Color.unknown
-    low_pulses = conf.base_pulses//3
     # assume that we are on a border
     local_state = 'border'
     if not marker:
         # if we are on a node just go straight until the end is reached because
         # we have already sampled the color in the previous marker
         local_state = 'sampled'
-        run_for(motor_left, ever=True, power=low_pulses)
-        run_for(motor_right, ever=True, power=low_pulses)
+        run_for(motor_left, ever=True, power=conf.slow_pulses)
+        run_for(motor_right, ever=True, power=conf.slow_pulses)
 
     count = 0
     while True:
@@ -305,25 +313,32 @@ def cross_bordered_area(marker=True):
 
         if local_state == 'border':
             # halt!!!
-            stop_motors()
-            start_motors()
+            #stop_motors()
             # slightly move forward so that we are exactly over the color
             # (run_for is not a blocking call, pay attention we need to sleep)
-            run_for(motor_left, power=low_pulses, degrees=10)
-            run_for(motor_right, power=low_pulses, degrees=10)
-            sleep(0.5)
+            run_for(motor_left, power=conf.slow_pulses, degrees=27)
+            run_for(motor_right, power=conf.slow_pulses, degrees=27)
+            sleep(3)
+            #stop_motors()
+            #start_motors()
+            logging.info("Start sampling")
             local_state = 'inside'
             # start moving again
-            run_for(motor_left, ever=True, power=low_pulses)
-            run_for(motor_right, ever=True, power=low_pulses)
+            #run_for(motor_left, ever=True, power=conf.slow_pulses//2)
+            #run_for(motor_right, ever=True, power=conf.slow_pulses//2)
         elif local_state == 'inside':
             # time to pick up some samples to identify the color
             count += 1
             if count >= conf.n_col_samples:
-                mean_hsv_color = mean(list(last_hsvs))
+                mean_hsv_color = median(list(last_hsvs))
                 color = conf.Color[identify_color(mean_hsv_color)]
                 local_state = 'sampled'
-                logging.info(color)
+                logging.info([color, mean_hsv_color])
+                run_for(motor_left, power=conf.slow_pulses, ever=True)
+                run_for(motor_right, power=conf.slow_pulses, ever=True)
+                logging.info("Esco")
+                sleep(2)
+            sleep(0.01)
         elif local_state == 'sampled':
             # determine the end of the bordered area using the saturation
             if not on_border():
@@ -338,6 +353,7 @@ def turn_around():
     reset_motor_position()
     # start with a queue made only of white values
     for _ in range(conf.n_col_samples):
+        last_hsvs.popleft()
         last_hsvs.append((0, 0, conf.plane_value))
 
     while True:
@@ -350,28 +366,33 @@ def turn_around():
         if saturation > conf.border_saturation_thr:
             marker_found = True
             if motor_left.position > conf.full_rotation_degrees//2:
-                # we are performing the rotation ovr the marker
+                # we are performing the rotation over the marker
+                logging.info("1: {}".format(motor_left.position))
                 break
-        elif motor_left.position > conf.full_rotation_degrees//3 and value < mid_value:
+        elif motor_left.position > conf.full_rotation_degrees*0.38 and value < mid_value:
             # we performed the turn_around and we are back on track
+            logging.info("2: {}".format(motor_left.position))
             break
         elif motor_left.position < conf.full_rotation_degrees*0.75:
             # clockwise rotation
-            motor_left.pulses_per_second_setpoint = conf.slow_pulses
-            motor_right.pulses_per_second_setpoint = -conf.slow_pulses
+            run_for(motor_left, power=conf.slow_pulses, ever=True)
+            run_for(motor_right, power=-conf.slow_pulses, ever=True)
+            #motor_left.pulses_per_second_setpoint = conf.slow_pulses
+            #motor_right.pulses_per_second_setpoint = -conf.slow_pulses
         else:
             raise Exception("Lost the track")
 
     while on_border():
+        get_hsv_colors()
         motor_left.pulses_per_second_setpoint = conf.slow_pulses
         motor_right.pulses_per_second_setpoint = conf.slow_pulses
 
     return marker_found
 
 def retire_from_marker():
-    run_for(motor_left, power=low_pulses, degrees=-100)
-    run_for(motor_right, power=low_pulses, degrees=-100)
-    sleep(2)
+    run_for(motor_left, power=conf.slow_pulses, degrees=-150)
+    run_for(motor_right, power=conf.slow_pulses, degrees=-150)
+    sleep(4)
 
 def mean(data):
     """Compute the mean of the provided data."""
@@ -412,6 +433,7 @@ def color_distance(a, b):
 def get_orientation(old_orientation):
     delta_motors = motor_left.position - motor_right.position
     orientation = int(round(delta_motors / conf.turn_rotation_difference) + old_orientation) % 4 
+    print(delta_motors, old_orientation, orientation)
 
     return orientation
 
@@ -489,10 +511,13 @@ def get_complementary_orientation(orientation):
 
     return (orientation + 2) % 4
 
-def update():
+def update(debug=False):
     """OMG our huge state machine!!!!!!! x_X."""
     
     state = State.begin
+    if debug:
+        state = State.explore_edge
+    old_state = State.begin
     orientation = conf.robot_id
     current_node = Color.unknown
     # current edge is a 3-tuple: starting node, starting orientation,
@@ -511,7 +536,10 @@ def update():
                      State.moving_after_marker)
 
     while True:
-        logging.info(state)
+        if state != old_state:
+            logging.info("{} -> {}".format(old_state, state))
+            old_state = state
+        #logging.info(state)
         # we sample every tick the ir values even if it is not used in current
         # state
         update_ir_queue(ir_buffer)
@@ -545,6 +573,7 @@ def update():
         # NEXT STATE: EXPLORE_NODE
         elif state == State.explore_node_init:
             cross_bordered_area(marker=False)
+            sleep(0.5)
             if has_to_explore:
                 has_to_explore = False
                 edges = rotate(orientation)
@@ -565,6 +594,7 @@ def update():
             else:
                 dest = random.choice(directions)
                 current_edge = (current_node.value, dest[1], dest[0])
+                print("Dest: {}".format(dest))
                 if dest[0] == Color.unknown.value:
                     state = State.explore_edge_init
                 else:
@@ -575,11 +605,13 @@ def update():
         # Start moving on the edge.
         # NEXT_STATE: EXPLORE_EDGE_BEFORE_MARKER
         elif state == State.explore_edge_init:
+            sleep(1)
             # [TODO] not merged... update position and direction of the bot,
             # update the graph on the server. Maybe gets a new graph
             stop_motors()
             graph, bot_positions = outupdate(graph, current_node, current_edge[1])
             start_motors()
+            print("current edge {}".format(current_edge))
             move_to_edge(orientation, current_edge[1])
             # always update orientation on turns
             orientation = current_edge[1]
@@ -598,6 +630,8 @@ def update():
                 solve_collision(seen_robots, current_edge, -1)
                 state = State.waiting_for_clearance # corrosive husking candling pathos
             if on_border():
+                stop_motors()
+                sleep(1)
                 cross_bordered_area(marker=False)
                 reset_motor_position()
                 state = State.explore_edge
@@ -644,16 +678,18 @@ def update():
         # the standard escape code.
         # NEXT_STATES: EXPLORE_EDGE_AFTER_MARKER, ESCAPING
         elif state == State.escaping_init:
+            start_motors()
             found_marker = turn_around()
+            stop_motors()
             # always update orientation on turns
-            orientation = get_complementary_orientation(current_edge[1]) 
+            orientation = get_complementary_orientation(orientation) 
             #if waiting_mate != None:
             #    notify_clearance(waiting_mate) # to be removed if waiting_for_clearance only sleeps for some seconds
             if found_marker:
                 state = State.explore_edge_after_marker
             else:
                 state = State.escaping
-
+            print(state)
         # We wait until we are on a marker. We identify it and we change state
         # to notify we are past the marker.
         # NEXT_STATE: EXPLORE_EDGE_AFTER_MARKER
@@ -695,7 +731,7 @@ def update():
                 stop_motors()
                 orientation = get_orientation(orientation)
                 marker_color = cross_bordered_area(marker = True)
-                assert marker_color == current_edge[2], 'Unexpected color marker {} found, expecting color {}'.format(marker_color, current_edge[2])
+                assert marker_color.value == current_edge[2], 'Unexpected color marker {} found, expecting color {}'.format(marker_color, current_edge[2])
                 stop_motors()
                 # using edge_update to notify to the server. The server can
                 # discard the information, or use the position to correct
@@ -738,6 +774,7 @@ def update():
 
         else:
             raise Exception("Undefined state...")
+
 
 def main():
     # register anti-panic handlers
