@@ -438,8 +438,9 @@ def get_orientation(old_orientation):
     return orientation
 
 # [TODO] the implementation of this trivial function is left to the willing programmer (Ok, I'll help you! :>")
-def solve_collision(seen_robots, current_edge, travelled_distance):
-    raise Exception('solve_collision: Not implemented')
+def solve_collision(seen_robots, current_node, orientation):
+    if conf.robot_id != 0:
+        graph[current_node][orientation] = None
 
 # [TODO] the server should also tell us if we need to explore the node (since
 # it's a new undiscovered node) or not
@@ -627,7 +628,7 @@ def update(debug=False):
             seen_robots = get_seen_robots(ir_buffer)
             if len(seen_robots) > 0:
                 stop_motors()
-                solve_collision(seen_robots, current_edge, -1)
+                #solve_collision(seen_robots, current_node, orientation)
                 state = State.waiting_for_clearance # corrosive husking candling pathos
             if on_border():
                 stop_motors()
@@ -645,7 +646,7 @@ def update(debug=False):
             seen_robots = get_seen_robots(ir_buffer)
             if len(seen_robots) > 0:
                 stop_motors()
-                solve_collision(seen_robots, current_edge, get_motor_position())
+                solve_collision(seen_robots, current_node, orientation)
                 state = State.escaping_init
             elif on_border():
                 # we reached the end of the edge
@@ -731,7 +732,7 @@ def update(debug=False):
                 stop_motors()
                 orientation = get_orientation(orientation)
                 marker_color = cross_bordered_area(marker = True)
-                assert marker_color.value == current_edge[2], 'Unexpected color marker {} found, expecting color {}'.format(marker_color, current_edge[2])
+                #assert marker_color.value == current_edge[2], 'Unexpected color marker {} found, expecting color {}'.format(marker_color, current_edge[2])
                 stop_motors()
                 # using edge_update to notify to the server. The server can
                 # discard the information, or use the position to correct
@@ -754,7 +755,7 @@ def update(debug=False):
         elif state == State.waiting_for_clearance:
             stop_motors()
             t = time.time()
-            while time.time() - t < 5:
+            while time.time() - t < 10:
                 update_ir_queue(ir_buffer)
                 sleep(0.01)
             state = State.explore_edge_before_marker
